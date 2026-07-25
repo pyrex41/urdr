@@ -115,40 +115,14 @@
             Raw Value (+ N 1) Limit)
           Result)))
 
-(define urdr.canonical.test.selected-splits
-  Raw Value [] -> [ok]
-  Raw Value [N | Ns] ->
-    (urdr.canonical.test.selected-split-one
-      (urdr.canonical.test.split-at N Raw [])
-      Raw
-      Value
-      Ns))
-
-(define urdr.canonical.test.selected-split-one
-  [error E] Raw Value Ns -> [error E]
-  [ok Prefix Suffix] Raw Value Ns ->
-    (let Result
-      (urdr.canonical.test.stream-two Prefix Suffix Value)
-      (if (= Result [ok])
-          (urdr.canonical.test.selected-splits Raw Value Ns)
-          Result)))
-
 (define urdr.canonical.test.split-coverage
   Raw Value ->
-    (let Size (length Raw)
-      (if (> Size 1500)
-          (urdr.canonical.test.selected-splits
-            Raw
-            Value
-            [0 1 4 5 6 1024 2048 3072
-             (- Size 1) Size])
-          (urdr.canonical.test.splits Raw Value 0 Size))))
+    (urdr.canonical.test.splits
+      Raw Value 0 (length Raw)))
 
 (define urdr.canonical.test.byte-coverage
   Raw Value ->
-    (if (> (length Raw) 1500)
-        [ok]
-        (urdr.canonical.test.byte-chunks Raw Value)))
+    (urdr.canonical.test.byte-chunks Raw Value))
 
 (define urdr.canonical.test.byte-chunks
   Raw Value ->
