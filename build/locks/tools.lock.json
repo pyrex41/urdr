@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "tools": [
+    {
+      "name": "bifrost",
+      "repository": "https://github.com/pyrex41/bifrost.git",
+      "commit": "51d24d81f7c7a15d382f1c02238453693bb46158",
+      "destination": "bifrost"
+    }
+  ]
+}
