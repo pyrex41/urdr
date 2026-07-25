@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""Reject changed files outside an explicitly declared ownership allowlist."""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path, PurePosixPath
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def git_names(*arguments: str) -> set[str]:
+    output = subprocess.run(
+        ["git", *arguments],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    ).stdout
+    return {line for line in output.splitlines() if line}
+
+
+def changed_paths(base_ref: str) -> set[str]:
+    names = git_names(
+        "diff", "--name-only", "--diff-filter=ACMR", f"{base_ref}...HEAD"
+    )
+    names |= git_names("diff", "--name-only", "--diff-filter=ACMR")
+    names |= git_names("diff", "--cached", "--name-only", "--diff-filter=ACMR")
+    names |= git_names("ls-files", "--others", "--exclude-standard")
+    return names
+
+
+def normalize(value: str, label: str, allow_directory: bool = False) -> str:
+    directory = allow_directory and value.endswith("/")
+    stripped = value[:-1] if directory else value
+    path = PurePosixPath(stripped)
+    if not stripped or path.is_absolute() or ".." in path.parts or "." in path.parts:
+        raise ValueError(f"unsafe {label}: {value!r}")
+    normalized = path.as_posix()
+    return f"{normalized}/" if directory else normalized
+
+
+def allowed(path: str, rules: list[str]) -> bool:
+    return any(
+        path.startswith(rule) if rule.endswith("/") else path == rule for rule in rules
+    )
+
+
+def parse_arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--base-ref", help="include all changes since this Git ref")
+    source.add_argument(
+        "--paths-from",
+        metavar="FILE",
+        help="read newline-separated paths from FILE, or - for standard input",
+    )
+    parser.add_argument(
+        "--allow",
+        action="append",
+        required=True,
+        help="exact file, or directory prefix ending in /; repeat as needed",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    arguments = parse_arguments()
+    try:
+        rules = [normalize(value, "allow rule", True) for value in arguments.allow]
+        if arguments.base_ref:
+            paths = changed_paths(arguments.base_ref)
+        else:
+            if arguments.paths_from == "-":
+                values = sys.stdin.read().splitlines()
+            else:
+                values = Path(arguments.paths_from).read_text(encoding="utf-8").splitlines()
+            paths = {normalize(value, "changed path") for value in values if value}
+    except (OSError, UnicodeError, ValueError, subprocess.CalledProcessError) as error:
+        print(f"owned-paths: {error}", file=sys.stderr)
+        raise SystemExit(2)
+
+    rejected = sorted(path for path in paths if not allowed(path, rules))
+    if rejected:
+        print("owned-paths: changes outside declared ownership:", file=sys.stderr)
+        for path in rejected:
+            print(f"  {path}", file=sys.stderr)
+        raise SystemExit(1)
+    print(f"owned-paths: {len(paths)} changed path(s) are within declared ownership")
+
+
+if __name__ == "__main__":
+    main()
