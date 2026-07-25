@@ -1,22 +1,50 @@
 {
   "schema_version": 1,
-  "name": "urdr-m0-strict-conformance",
+  "name": "urdr-m0-production-conformance",
   "root": ".",
-  "default_cwd": ".cache/urdr/bifrost-runtime",
-  "temporary_integration_seam": true,
+  "default_cwd": ".",
   "cases": [
     {
-      "name": "m0-temporary-lowercase-hex",
-      "mode": "eval",
-      "expr": "(do (pr \"757264722d6d302d74656d706f726172792d73656d616e7469632d676174652d7631\" (stoutput)) (nl))",
-      "expect": "output",
-      "golden": "757264722d6d302d74656d706f726172792d73656d616e7469632d676174652d7631",
-      "marker": "757264722d6d302d74656d706f726172792d73656d616e7469632d676174652d7631",
-      "payload_encoding": "lowercase-hex",
-      "raw_fixture_sha256": "8e1f8fe80ad8f2c18b00f0ac37f1a2667598b97187d59aa1951c3f1e646fb778",
-      "payload_sha256": "b3126a13aabfdf5b3cc22dc462a20b822c01cba3ad6102578de27f2ee6848741",
-      "temporary_integration_seam": true,
-      "doc": "Fail-closed four-port seam until the final M0 Shen entrypoint lands"
+      "name": "canonical-values",
+      "mode": "script",
+      "program": "shen/tests/canonical/run-tests.shen",
+      "program_sha256": "70ebbf62ad3dad69c5338e6a24288fae0eed4a5a1afb7ed8e57d5d0bdde27e3c",
+      "expect": "marker",
+      "marker": "ALL PASS",
+      "heavy": true,
+      "fixture_manifest": "protocol/fixtures/v1/canonical/SHA256SUMS",
+      "fixture_manifest_sha256": "c7ff013c101199571544c254495c2a9b67c3ee9f1383a0bc0c10c33aaa1e9e6c",
+      "raw_golden_path": null,
+      "raw_golden_sha256": "a4f545f90d62436c7560a754722fd331c063288a964bee3d19dea68e4ab00b25",
+      "doc": "Canonical values, portable integers, framing, and fixture rejection"
+    },
+    {
+      "name": "named-prng",
+      "mode": "script",
+      "program": "shen/tests/prng/run-tests.shen",
+      "program_sha256": "4e70c73713e396b67c9d393ac953ceeaf465e0b37ce3eaf3b6f9c93d637e3401",
+      "expect": "marker",
+      "marker": "ALL PASS",
+      "heavy": true,
+      "fixture_manifest": "protocol/fixtures/v1/prng/SHA256SUMS",
+      "fixture_manifest_sha256": "aa3276def93fb855593d38ec2551ecce58a6726d9a1d6cfbb73ff2a37f0463b8",
+      "raw_golden_path": null,
+      "raw_golden_sha256": "817e441b925f2b5239500c4c515e35b821f53a47f66fd8a3cc6b37523dcc9e4c",
+      "doc": "Portable integers, SHA-256, named streams, sampling, and vectors"
+    },
+    {
+      "name": "world-reducer",
+      "mode": "script",
+      "program": "shen/tests/world/run-tests.shen",
+      "program_sha256": "149a3e68cda00d584438ff28be3de5c6f68a7f6adf4fd78c28847be1c528d133",
+      "expect": "marker",
+      "marker": "ALL PASS",
+      "heavy": true,
+      "fixture_manifest": null,
+      "fixture_manifest_sha256": null,
+      "raw_golden_path": "shen/tests/world/golden.txt",
+      "raw_golden_sha256": "b1bbea1e7d5e1dbebd30130cf5f627e444287463fd62744b6dd0c72b56cc768f",
+      "doc": "World reduction, event ordering, replay, named streams, and trace"
     }
   ]
 }
