@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "marker": "URDR-ADVERSARIAL-V1",
+  "required_ports": [
+    "shen-go",
+    "shen-lua",
+    "shen-cl",
+    "shen-rust"
+  ],
+  "prng_vector": {
+    "seed": "9007199254740993",
+    "path": [
+      "network",
+      "link-2",
+      "loss"
+    ],
+    "counter": "18446744073709551617",
+    "output_hex": "ad1683fd82fdda0e56fbb051ec2957ab84f196c3693865e8c3384e5593b18699"
+  },
+  "invalid_fixtures": {
+    "protocol/fixtures/v1/invalid/malformed-utf8.hex": {
+      "wire_hex": "31323a28343a74657874323ac328292c"
+    },
+    "protocol/fixtures/v1/invalid/truncated-prefix.hex": {
+      "wire_hex": "3132"
+    },
+    "protocol/fixtures/v1/invalid/truncated-payload.hex": {
+      "wire_hex": "353a68656c6c"
+    },
+    "protocol/fixtures/v1/invalid/over-limit.hex": {
+      "wire_hex": "343039373a"
+    },
+    "protocol/fixtures/v1/invalid/duplicate-fields.hex": {
+      "wire_hex": "34303a28363a7265636f726428313a6128333a696e74313a31292928313a6128333a696e74313a322929292c"
+    }
+  }
+}
