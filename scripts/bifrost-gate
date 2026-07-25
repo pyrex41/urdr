@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Strict, machine-readable four-port Bifrost conformance gate."""
+"""Fail-closed, machine-readable M0 semantic conformance gate."""
 
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ import os
 import re
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import ModuleType
-from typing import Any
+from typing import Any, Callable
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,12 +20,9 @@ CACHE = ROOT / ".cache" / "urdr" / "dependencies"
 SUITE_PATH = ROOT / "bifrost.suite.json"
 KERNEL_VERSION = "41.2"
 REQUIRED_IMPLS = ("shen-go", "shen-lua", "shen-cl", "shen-rust")
-CASE_NAME = "m0-temporary-lowercase-hex"
-PAYLOAD = "757264722d6d302d74656d706f726172792d73656d616e7469632d676174652d7631"
-FIXTURE_SHA256 = "8e1f8fe80ad8f2c18b00f0ac37f1a2667598b97187d59aa1951c3f1e646fb778"
-PAYLOAD_SHA256 = "b3126a13aabfdf5b3cc22dc462a20b822c01cba3ad6102578de27f2ee6848741"
-LOWER_HEX = re.compile(r"^[0-9a-f]+$")
+CASE_ORDER = ("canonical-values", "named-prng", "world-reducer")
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 EXPECTED_PINS = {
     "bifrost": "51d24d81f7c7a15d382f1c02238453693bb46158",
@@ -36,13 +33,57 @@ EXPECTED_PINS = {
     "shenscript": "35b8269f75afbac9939ac0e8c7838cc4bf00d448",
 }
 
+EXPECTED_CASES = {
+    "canonical-values": {
+        "name": "canonical-values",
+        "mode": "script",
+        "program": "shen/tests/canonical/run-tests.shen",
+        "program_sha256": "70ebbf62ad3dad69c5338e6a24288fae0eed4a5a1afb7ed8e57d5d0bdde27e3c",
+        "expect": "marker",
+        "marker": "ALL PASS",
+        "heavy": True,
+        "fixture_manifest": "protocol/fixtures/v1/canonical/SHA256SUMS",
+        "fixture_manifest_sha256": "c7ff013c101199571544c254495c2a9b67c3ee9f1383a0bc0c10c33aaa1e9e6c",
+        "raw_golden_path": None,
+        "raw_golden_sha256": "a4f545f90d62436c7560a754722fd331c063288a964bee3d19dea68e4ab00b25",
+        "doc": "Canonical values, portable integers, framing, and fixture rejection",
+    },
+    "named-prng": {
+        "name": "named-prng",
+        "mode": "script",
+        "program": "shen/tests/prng/run-tests.shen",
+        "program_sha256": "4e70c73713e396b67c9d393ac953ceeaf465e0b37ce3eaf3b6f9c93d637e3401",
+        "expect": "marker",
+        "marker": "ALL PASS",
+        "heavy": True,
+        "fixture_manifest": "protocol/fixtures/v1/prng/SHA256SUMS",
+        "fixture_manifest_sha256": "aa3276def93fb855593d38ec2551ecce58a6726d9a1d6cfbb73ff2a37f0463b8",
+        "raw_golden_path": None,
+        "raw_golden_sha256": "817e441b925f2b5239500c4c515e35b821f53a47f66fd8a3cc6b37523dcc9e4c",
+        "doc": "Portable integers, SHA-256, named streams, sampling, and vectors",
+    },
+    "world-reducer": {
+        "name": "world-reducer",
+        "mode": "script",
+        "program": "shen/tests/world/run-tests.shen",
+        "program_sha256": "149a3e68cda00d584438ff28be3de5c6f68a7f6adf4fd78c28847be1c528d133",
+        "expect": "marker",
+        "marker": "ALL PASS",
+        "heavy": True,
+        "fixture_manifest": None,
+        "fixture_manifest_sha256": None,
+        "raw_golden_path": "shen/tests/world/golden.txt",
+        "raw_golden_sha256": "b1bbea1e7d5e1dbebd30130cf5f627e444287463fd62744b6dd0c72b56cc768f",
+        "doc": "World reduction, event ordering, replay, named streams, and trace",
+    },
+}
+
 CHECKOUT_ENV = {
     "bifrost": "URDR_BIFROST_CHECKOUT",
     "shen-go": "URDR_SHEN_GO_CHECKOUT",
     "shen-lua": "URDR_SHEN_LUA_CHECKOUT",
     "shen-cl": "URDR_SHEN_CL_CHECKOUT",
     "shen-rust": "URDR_SHEN_RUST_CHECKOUT",
-    "shenscript": "URDR_SHENSCRIPT_CHECKOUT",
 }
 
 LAUNCHERS = {
@@ -61,15 +102,15 @@ BIFROST_LAUNCHER_ENV = {
 
 
 class GateFailure(Exception):
-    """A strict conformance requirement was not met."""
+    """A strict gate contract was not met."""
 
     def __init__(self, message: str, exit_code: int = 1) -> None:
         super().__init__(message)
         self.exit_code = exit_code
 
 
-def sha256_text(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+def sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -109,104 +150,183 @@ def load_and_validate_locks() -> dict[str, dict[str, Any]]:
         raise GateFailure("Shen ports lock does not pin kernel 41.2", 2)
 
     entries: dict[str, dict[str, Any]] = {}
-    for item in list(tools.get("tools", [])) + list(ports.get("ports", [])):
+    raw_entries = list(tools.get("tools", [])) + list(ports.get("ports", []))
+    for item in raw_entries:
         if not isinstance(item, dict) or not isinstance(item.get("name"), str):
             raise GateFailure("dependency lock contains a malformed entry", 2)
         name = item["name"]
         if name in entries:
             raise GateFailure(f"dependency {name} is pinned more than once", 2)
         entries[name] = item
-
     if set(entries) != set(EXPECTED_PINS):
-        raise GateFailure("dependency lock names differ from the reviewed strict matrix", 2)
+        raise GateFailure("dependency lock names differ from the reviewed matrix", 2)
     for name, expected in EXPECTED_PINS.items():
         item = entries[name]
-        if item.get("commit") != expected or not FULL_SHA.fullmatch(str(item.get("commit", ""))):
+        if item.get("commit") != expected or not FULL_SHA.fullmatch(
+            str(item.get("commit", ""))
+        ):
             raise GateFailure(f"{name} lock commit differs from reviewed pin", 2)
         if item.get("destination") != name:
             raise GateFailure(f"{name} lock destination must be {name}", 2)
-        if name in REQUIRED_IMPLS:
-            if item.get("required") is not True or item.get("kernel_version") != KERNEL_VERSION:
-                raise GateFailure(f"{name} must be required at kernel 41.2", 2)
+        if name in REQUIRED_IMPLS and (
+            item.get("required") is not True
+            or item.get("kernel_version") != KERNEL_VERSION
+        ):
+            raise GateFailure(f"{name} must be required at kernel 41.2", 2)
     if entries["shenscript"].get("required") is not False:
         raise GateFailure("ShenScript must remain optional", 2)
     return entries
 
 
-def validate_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
-    expected_top = {
+def validate_manifest(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    if set(manifest) != {
         "schema_version",
         "name",
         "root",
         "default_cwd",
-        "temporary_integration_seam",
         "cases",
-    }
-    if set(manifest) != expected_top:
-        raise GateFailure("suite manifest fields differ from the strict temporary seam", 2)
+    }:
+        raise GateFailure("suite manifest fields differ from production contract", 2)
     if (
         manifest.get("schema_version") != 1
-        or manifest.get("name") != "urdr-m0-strict-conformance"
+        or manifest.get("name") != "urdr-m0-production-conformance"
         or manifest.get("root") != "."
-        or manifest.get("default_cwd") != ".cache/urdr/bifrost-runtime"
-        or manifest.get("temporary_integration_seam") is not True
+        or manifest.get("default_cwd") != "."
     ):
-        raise GateFailure("suite manifest does not declare the reviewed temporary seam", 2)
+        raise GateFailure("suite manifest identity or root changed", 2)
     cases = manifest.get("cases")
-    if not isinstance(cases, list) or len(cases) != 1 or not isinstance(cases[0], dict):
-        raise GateFailure("suite must contain exactly one temporary M0 case", 2)
-    case = cases[0]
-    required_fields = {
-        "name",
-        "mode",
-        "expr",
-        "expect",
-        "golden",
-        "marker",
-        "payload_encoding",
-        "raw_fixture_sha256",
-        "payload_sha256",
-        "temporary_integration_seam",
-        "doc",
-    }
-    if set(case) != required_fields:
+    if not isinstance(cases, list) or len(cases) != len(CASE_ORDER):
+        raise GateFailure("suite must contain canonical, PRNG, and world cases", 2)
+    for index, name in enumerate(CASE_ORDER):
+        case = cases[index]
+        if not isinstance(case, dict) or case.get("name") != name:
+            raise GateFailure(f"suite case order or identity changed at {name}", 2)
         if "marker" not in case:
-            raise GateFailure("suite case is missing its mandatory marker", 2)
-        raise GateFailure("suite case fields differ from the strict temporary fixture", 2)
-    if case.get("name") != CASE_NAME or case.get("mode") != "eval":
-        raise GateFailure("suite case identity or mode changed", 2)
-    if case.get("expect") != "output":
-        raise GateFailure("suite must compare every port to a checked-in golden", 2)
-    if case.get("golden") != PAYLOAD:
-        raise GateFailure("suite golden changed from the reviewed lowercase-hex payload", 2)
-    if case.get("marker") != PAYLOAD:
-        raise GateFailure("suite marker is missing or changed", 2)
-    if case.get("payload_encoding") != "lowercase-hex":
-        raise GateFailure("suite payload encoding must be lowercase-hex", 2)
-    if not LOWER_HEX.fullmatch(PAYLOAD) or len(PAYLOAD) % 2:
-        raise GateFailure("reviewed payload is not even-length lowercase hex", 2)
-    expression = case.get("expr")
-    if not isinstance(expression, str):
-        raise GateFailure("suite raw fixture must be a UTF-8 expression", 2)
-    actual_fixture_sha = sha256_text(expression)
-    if (
-        case.get("raw_fixture_sha256") != FIXTURE_SHA256
-        or actual_fixture_sha != FIXTURE_SHA256
-    ):
-        raise GateFailure("checked-in raw fixture SHA-256 changed", 2)
-    if (
-        case.get("payload_sha256") != PAYLOAD_SHA256
-        or sha256_text(PAYLOAD) != PAYLOAD_SHA256
-    ):
-        raise GateFailure("checked-in payload SHA-256 changed", 2)
-    if case.get("temporary_integration_seam") is not True:
-        raise GateFailure("suite must remain explicitly temporary until M0 lands", 2)
-    return case
+            raise GateFailure(f"{name} is missing its mandatory marker", 2)
+        expected = EXPECTED_CASES[name]
+        if set(case) != set(expected):
+            raise GateFailure(f"{name} fields differ from production contract", 2)
+        for field, value in expected.items():
+            if case.get(field) != value:
+                raise GateFailure(f"{name} {field} changed from reviewed value", 2)
+    return cases
+
+
+def safe_relative(value: str) -> PurePosixPath:
+    path = PurePosixPath(value)
+    if path.is_absolute() or not path.parts or any(part in ("", ".", "..") for part in path.parts):
+        raise GateFailure(f"unsafe fixture manifest path: {value!r}", 2)
+    return path
+
+
+def validate_sha_manifest_data(
+    manifest: bytes,
+    files: dict[str, bytes],
+    expected_manifest_sha256: str,
+) -> dict[str, str]:
+    if sha256(manifest) != expected_manifest_sha256:
+        raise GateFailure("fixture SHA256SUMS changed from reviewed digest", 2)
+    try:
+        lines = manifest.decode("ascii").splitlines()
+    except UnicodeDecodeError as error:
+        raise GateFailure("fixture SHA256SUMS must be ASCII", 2) from error
+    entries: dict[str, str] = {}
+    for line in lines:
+        if len(line) < 67 or line[64:66] != "  " or not SHA256.fullmatch(line[:64]):
+            raise GateFailure(f"malformed SHA256SUMS line: {line!r}", 2)
+        relative = safe_relative(line[66:]).as_posix()
+        if relative in entries:
+            raise GateFailure(f"duplicate SHA256SUMS path: {relative}", 2)
+        entries[relative] = line[:64]
+    if not entries or list(entries) != sorted(entries):
+        raise GateFailure("fixture SHA256SUMS paths must be nonempty and sorted", 2)
+    if set(entries) != set(files):
+        raise GateFailure("fixture SHA256SUMS path set differs from loaded fixtures", 2)
+    for relative, expected in entries.items():
+        if sha256(files[relative]) != expected:
+            raise GateFailure(f"fixture SHA-256 mismatch: {relative}", 2)
+    return entries
+
+
+def root_path(relative: str) -> Path:
+    safe_relative(relative)
+    path = (ROOT / relative).resolve()
+    if ROOT != path and ROOT not in path.parents:
+        raise GateFailure(f"fixture path escapes repository: {relative}", 2)
+    return path
+
+
+def verify_semantic_inputs(cases: list[dict[str, Any]]) -> dict[str, Any]:
+    evidence: dict[str, Any] = {}
+    for case in cases:
+        name = case["name"]
+        program = root_path(case["program"])
+        if not program.is_file():
+            raise GateFailure(f"missing expected semantic path: {case['program']}", 2)
+        program_digest = sha256(program.read_bytes())
+        if program_digest != case["program_sha256"]:
+            raise GateFailure(f"{name} program SHA-256 changed", 2)
+        item: dict[str, Any] = {
+            "program": case["program"],
+            "program_sha256": program_digest,
+        }
+        manifest_name = case["fixture_manifest"]
+        if manifest_name is not None:
+            manifest_path = root_path(manifest_name)
+            if not manifest_path.is_file():
+                raise GateFailure(f"missing expected fixture manifest: {manifest_name}", 2)
+            manifest_bytes = manifest_path.read_bytes()
+            files: dict[str, bytes] = {}
+            try:
+                manifest_lines = manifest_bytes.decode("ascii").splitlines()
+            except UnicodeDecodeError as error:
+                raise GateFailure(f"{manifest_name} must be ASCII", 2) from error
+            for line in manifest_lines:
+                if len(line) < 67:
+                    raise GateFailure(f"malformed fixture manifest: {manifest_name}", 2)
+                relative = safe_relative(line[66:]).as_posix()
+                fixture = (manifest_path.parent / relative).resolve()
+                if manifest_path.parent not in fixture.parents:
+                    raise GateFailure(f"fixture escapes manifest root: {relative}", 2)
+                if not fixture.is_file():
+                    raise GateFailure(f"missing fixture listed by manifest: {relative}", 2)
+                files[relative] = fixture.read_bytes()
+            entries = validate_sha_manifest_data(
+                manifest_bytes,
+                files,
+                case["fixture_manifest_sha256"],
+            )
+            item["fixture_manifest"] = manifest_name
+            item["fixture_manifest_sha256"] = sha256(manifest_bytes)
+            item["fixture_count"] = len(entries)
+        golden_name = case["raw_golden_path"]
+        item["raw_golden_sha256"] = case["raw_golden_sha256"]
+        if golden_name is not None:
+            golden = root_path(golden_name)
+            if not golden.is_file():
+                raise GateFailure(f"missing expected semantic path: {golden_name}", 2)
+            golden_bytes = golden.read_bytes()
+            if sha256(golden_bytes) != case["raw_golden_sha256"]:
+                raise GateFailure(f"{name} raw golden SHA-256 changed", 2)
+            item["raw_golden_path"] = golden_name
+            item["raw_golden_sha256"] = sha256(golden_bytes)
+        evidence[name] = item
+    return evidence
 
 
 def checkout_path(name: str, entry: dict[str, Any]) -> Path:
     override = os.environ.get(CHECKOUT_ENV[name])
     return Path(override).expanduser().resolve() if override else CACHE / entry["destination"]
+
+
+def validate_checkout_commit(name: str, actual: str, dirty: bool = False) -> None:
+    if actual != EXPECTED_PINS[name]:
+        raise GateFailure(
+            f"{name} checkout is {actual}, expected {EXPECTED_PINS[name]}",
+            2,
+        )
+    if dirty:
+        raise GateFailure(f"{name} checkout has modified tracked files", 2)
 
 
 def git_output(checkout: Path, *arguments: str) -> str:
@@ -225,33 +345,28 @@ def git_output(checkout: Path, *arguments: str) -> str:
 
 def verify_checkouts(
     entries: dict[str, dict[str, Any]]
-) -> tuple[dict[str, Path], dict[str, dict[str, str]]]:
+) -> tuple[dict[str, Path], dict[str, dict[str, Any]]]:
     paths: dict[str, Path] = {}
-    evidence: dict[str, dict[str, str]] = {}
+    evidence: dict[str, dict[str, Any]] = {}
     for name in ("bifrost", *REQUIRED_IMPLS):
         checkout = checkout_path(name, entries[name])
         if not checkout.is_dir():
             raise GateFailure(f"missing pinned checkout for {name}: {checkout}", 2)
         actual = git_output(checkout, "rev-parse", "HEAD")
-        expected = EXPECTED_PINS[name]
-        if actual != expected:
-            raise GateFailure(f"{name} checkout is {actual}, expected {expected}", 2)
-        dirty = subprocess.run(
+        dirty_result = subprocess.run(
             ["git", "diff", "--quiet", "HEAD", "--"],
             cwd=checkout,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        if dirty.returncode != 0:
-            raise GateFailure(f"{name} checkout has modified tracked files", 2)
+        if dirty_result.returncode > 1:
+            raise GateFailure(f"cannot verify tracked state for {name}", 2)
+        validate_checkout_commit(name, actual, dirty_result.returncode == 1)
         paths[name] = checkout
-        evidence[name] = {
-            "commit": actual,
-            "checkout": str(checkout),
-        }
+        evidence[name] = {"commit": actual, "checkout": str(checkout)}
     evidence["shenscript"] = {
         "commit": EXPECTED_PINS["shenscript"],
-        "required": "false",
+        "required": False,
     }
     return paths, evidence
 
@@ -279,70 +394,149 @@ def import_bifrost(path: Path) -> ModuleType:
     return module
 
 
+def validate_versions(versions: dict[str, str]) -> None:
+    if set(versions) != set(REQUIRED_IMPLS):
+        raise GateFailure("live version probes do not cover exactly four ports")
+    for name in REQUIRED_IMPLS:
+        if versions[name] != KERNEL_VERSION:
+            raise GateFailure(
+                f"{name} reported kernel {versions[name]!r}, expected 41.2"
+            )
+
+
+def semantic_projection(case_name: str, raw: bytes) -> bytes:
+    prefixes = {
+        "canonical-values": (b"valid|", b"reject|", b"FAIL|"),
+        "named-prng": (b"PASS ", b"FAIL ", b"urdr-prng:"),
+        "world-reducer": (b"WORLD-TRACE ", b"WORLD TESTS:", b"WORLD TRACE:"),
+    }[case_name]
+    lines = [
+        line
+        for line in raw.splitlines()
+        if line == b"ALL PASS" or line.startswith(prefixes)
+    ]
+    return b"\n".join(lines) + (b"\n" if lines else b"")
+
+
+def validate_output_shape(case_name: str, semantic: bytes) -> None:
+    try:
+        lines = semantic.decode("ascii").splitlines()
+    except UnicodeDecodeError as error:
+        raise GateFailure(f"{case_name} semantic output must be ASCII") from error
+    if not lines or lines[-1] != "ALL PASS":
+        raise GateFailure(f"{case_name} raw marker is missing")
+    if any("FAIL" in line for line in lines[:-1]):
+        raise GateFailure(f"{case_name} raw output contains failure")
+    if case_name == "canonical-values":
+        valid = re.compile(r"^valid\|[a-z0-9-]+\|[0-9a-f]+$")
+        reject = re.compile(r"^reject\|[a-z0-9-]+\|[a-z0-9-]+$")
+        if (
+            len(lines) != 53
+            or sum(bool(valid.fullmatch(line)) for line in lines[:-1]) != 20
+            or sum(bool(reject.fullmatch(line)) for line in lines[:-1]) != 32
+        ):
+            raise GateFailure("canonical raw output shape or lowercase hex changed")
+    elif case_name == "named-prng":
+        passes = [line for line in lines if line.startswith("PASS ")]
+        summaries = [
+            line for line in lines if re.fullmatch(r"urdr-prng: ([0-9]+)/\1 passed", line)
+        ]
+        if len(summaries) != 1:
+            raise GateFailure("PRNG raw output summary changed")
+        count = int(summaries[0].split()[1].split("/")[0])
+        if len(passes) != count or len(lines) != count + 2:
+            raise GateFailure("PRNG raw output test count changed")
+    elif case_name == "world-reducer":
+        if (
+            len(lines) != 3
+            or not re.fullmatch(r"WORLD-TRACE [0-9a-f]+", lines[0])
+            or lines[1] != "WORLD TESTS: 11/11 PASS"
+        ):
+            raise GateFailure("world raw output or lowercase trace changed")
+
+
 def validate_execution(
     available_names: list[str],
     skipped: dict[str, str],
-    case_result: dict[str, Any],
+    case_results: dict[str, dict[str, Any]],
     versions: dict[str, str],
-) -> dict[str, dict[str, Any]]:
+    golden_loader: Callable[[str], bytes],
+    expected_output_hashes: dict[str, str] | None = None,
+) -> dict[str, Any]:
     if len(available_names) < len(REQUIRED_IMPLS):
         raise GateFailure("Bifrost made fewer than four required ports available")
     if set(available_names) != set(REQUIRED_IMPLS):
-        raise GateFailure("Bifrost available matrix differs from the four required ports")
+        raise GateFailure("Bifrost available matrix differs from required ports")
     missing = [name for name in REQUIRED_IMPLS if name in skipped]
     if missing:
         raise GateFailure("Bifrost skipped required ports: " + ",".join(missing))
-    if case_result.get("verdict") == "DIVERGE":
-        raise GateFailure("Bifrost reported DIVERGE")
-    if case_result.get("verdict") != "PASS":
-        raise GateFailure(f"Bifrost case verdict is {case_result.get('verdict')!r}")
+    validate_versions(versions)
+    if set(case_results) != set(CASE_ORDER):
+        raise GateFailure("Bifrost result does not contain all semantic cases")
+    output_hashes = expected_output_hashes or {
+        name: EXPECTED_CASES[name]["raw_golden_sha256"] for name in CASE_ORDER
+    }
 
-    per_impl = case_result.get("per_impl")
-    if not isinstance(per_impl, dict) or set(per_impl) != set(REQUIRED_IMPLS):
-        raise GateFailure("Bifrost result does not contain exactly four required ports")
-    port_evidence: dict[str, dict[str, Any]] = {}
-    for name in REQUIRED_IMPLS:
-        version = versions.get(name)
-        if version != KERNEL_VERSION:
-            raise GateFailure(f"{name} reported kernel {version!r}, expected 41.2")
-        result = per_impl[name]
-        status = result.get("status")
-        if status == "SKIP":
-            raise GateFailure(f"{name} reported SKIP")
-        if status == "DIVERGE":
-            raise GateFailure(f"{name} reported DIVERGE")
-        if status != "PASS":
-            raise GateFailure(f"{name} status is {status!r}, expected PASS")
-        if result.get("timeout"):
-            raise GateFailure(f"{name} timed out")
-        if result.get("rc") != 0:
-            raise GateFailure(f"{name} exited with {result.get('rc')!r}")
-        if result.get("norm") != PAYLOAD:
-            raise GateFailure(f"{name} normalized payload differs from the golden")
-        raw = result.get("raw")
-        if not isinstance(raw, str):
-            raise GateFailure(f"{name} did not return UTF-8 raw output")
-        raw_lines = raw.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-        if raw_lines.count(PAYLOAD) != 1:
+    evidence: dict[str, Any] = {}
+    for case_name in CASE_ORDER:
+        result = case_results[case_name]
+        if result.get("verdict") == "DIVERGE":
+            raise GateFailure(f"{case_name} reported DIVERGE")
+        if result.get("verdict") != "PASS":
             raise GateFailure(
-                f"{name} raw output does not contain exactly one lowercase-hex payload line"
+                f"{case_name} Bifrost verdict is {result.get('verdict')!r}"
             )
-        port_evidence[name] = {
-            "kernel_version": version,
-            "status": status,
-            "exit_code": result["rc"],
-            "normalized_payload": result["norm"],
-            "raw_output_sha256": sha256_text(raw),
-            "raw_payload_sha256": sha256_text(PAYLOAD),
+        per_impl = result.get("per_impl")
+        if not isinstance(per_impl, dict) or set(per_impl) != set(REQUIRED_IMPLS):
+            raise GateFailure(f"{case_name} does not contain exactly four ports")
+        raw_outputs: dict[str, bytes] = {}
+        semantic_outputs: dict[str, bytes] = {}
+        ports: dict[str, Any] = {}
+        for name in REQUIRED_IMPLS:
+            port = per_impl[name]
+            status = port.get("status")
+            if status in ("SKIP", "DIVERGE"):
+                raise GateFailure(f"{case_name}/{name} reported {status}")
+            if status != "PASS":
+                raise GateFailure(f"{case_name}/{name} status is {status!r}")
+            if port.get("timeout") or port.get("rc") != 0:
+                raise GateFailure(f"{case_name}/{name} did not exit cleanly")
+            raw_text = port.get("raw")
+            if not isinstance(raw_text, str) or "\ufffd" in raw_text:
+                raise GateFailure(f"{case_name}/{name} raw output is not strict UTF-8")
+            raw = raw_text.encode("utf-8")
+            semantic = semantic_projection(case_name, raw)
+            validate_output_shape(case_name, semantic)
+            raw_outputs[name] = raw
+            semantic_outputs[name] = semantic
+            ports[name] = {
+                "status": status,
+                "exit_code": port["rc"],
+                "raw_direct_output_sha256": sha256(raw),
+                "raw_semantic_output_sha256": sha256(semantic),
+                "raw_semantic_bytes": len(semantic),
+            }
+        if len(set(semantic_outputs.values())) != 1:
+            raise GateFailure(f"{case_name} raw direct semantic outputs disagree")
+        agreed = semantic_outputs[REQUIRED_IMPLS[0]]
+        if sha256(agreed) != output_hashes[case_name]:
+            raise GateFailure(f"{case_name} raw direct output differs from golden SHA")
+        golden_name = EXPECTED_CASES[case_name]["raw_golden_path"]
+        if golden_name is not None and agreed != golden_loader(golden_name):
+            raise GateFailure(f"{case_name} raw direct output differs from golden")
+        evidence[case_name] = {
+            "bifrost_verdict": "PASS",
+            "marker": "ALL PASS",
+            "raw_direct_agreement_sha256": sha256(agreed),
+            "ports": ports,
         }
-    return port_evidence
+    return evidence
 
 
 def execute(
     module: ModuleType,
     required: tuple[str, ...],
-) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
-    (ROOT / ".cache" / "urdr" / "bifrost-runtime").mkdir(parents=True, exist_ok=True)
+) -> tuple[dict[str, Any], dict[str, str], dict[str, str]]:
     suite = module.build_suite_from_manifest(str(SUITE_PATH))
     _, case_results, available, skipped, cases = module.run_suite(
         suite,
@@ -350,10 +544,8 @@ def execute(
         include_heavy=True,
         progress=False,
     )
-    if len(cases) != 1 or cases[0].get("name") != CASE_NAME:
-        raise GateFailure("Bifrost did not load exactly the reviewed gate case")
-    if CASE_NAME not in case_results:
-        raise GateFailure("Bifrost omitted the required gate case")
+    if [case.get("name") for case in cases] != list(CASE_ORDER):
+        raise GateFailure("Bifrost did not load the reviewed semantic case set")
     versions: dict[str, str] = {}
     version_case = {
         "mode": "version",
@@ -372,13 +564,14 @@ def execute(
             raise GateFailure(f"{name} live kernel-version probe failed")
         match = re.search(r"\b(\d+\.\d+)\b", result.get("raw", ""))
         versions[name] = match.group(1) if match else "unknown"
-    port_evidence = validate_execution(
+    case_evidence = validate_execution(
         list(available),
         skipped,
-        case_results[CASE_NAME],
+        case_results,
         versions,
+        lambda relative: root_path(relative).read_bytes(),
     )
-    return port_evidence, skipped
+    return case_evidence, skipped, versions
 
 
 def main() -> int:
@@ -392,32 +585,28 @@ def main() -> int:
     try:
         if os.environ.get("URDR_OFFLINE") != "1":
             raise GateFailure("gate must run with URDR_OFFLINE=1", 2)
+        os.environ["SHEN_KERNEL_CACHE"] = "off"
+        os.environ["SHEN_FASL"] = "off"
         required = parse_required_impls(
             os.environ.get("REQUIRED_IMPLS", ",".join(REQUIRED_IMPLS))
         )
         entries = load_and_validate_locks()
-        manifest = load_json(SUITE_PATH)
-        case = validate_manifest(manifest)
+        cases = validate_manifest(load_json(SUITE_PATH))
+        input_evidence = verify_semantic_inputs(cases)
         paths, dependency_evidence = verify_checkouts(entries)
         launchers = resolve_launchers(paths)
         module = import_bifrost(paths["bifrost"])
-        ports, skipped = execute(module, required)
+        case_evidence, skipped, versions = execute(module, required)
         evidence.update(
             {
                 "status": "PASS",
-                "suite_sha256": hashlib.sha256(SUITE_PATH.read_bytes()).hexdigest(),
-                "fixture": {
-                    "case": CASE_NAME,
-                    "temporary_integration_seam": True,
-                    "raw_fixture_sha256": case["raw_fixture_sha256"],
-                    "payload_encoding": case["payload_encoding"],
-                    "payload_sha256": case["payload_sha256"],
-                    "payload": PAYLOAD,
-                },
+                "suite_sha256": sha256(SUITE_PATH.read_bytes()),
+                "semantic_inputs": input_evidence,
                 "dependencies": dependency_evidence,
                 "launchers": {name: str(path) for name, path in launchers.items()},
+                "live_kernel_versions": versions,
                 "skipped": skipped,
-                "ports": ports,
+                "cases": case_evidence,
             }
         )
         print(json.dumps(evidence, indent=2, sort_keys=True))

@@ -45,16 +45,20 @@ jobs:
             SHEN="$deps/shen-go/.bin/shen-go"
           make -C "$deps/shen-cl" build-sbcl
 
-      - name: Emit strict machine-readable four-port evidence
+      - name: Run dependency-free offline checks
+        env:
+          CARGO_NET_OFFLINE: "true"
+        run: make quality
+
+      - name: Run clean offline conformance and emit evidence
         env:
           URDR_OFFLINE: "1"
           REQUIRED_IMPLS: shen-go,shen-lua,shen-cl,shen-rust
           CARGO_NET_OFFLINE: "true"
         run: |
-          scripts/bifrost-gate | tee "$RUNNER_TEMP/bifrost-evidence.json"
-          python3 -m json.tool "$RUNNER_TEMP/bifrost-evidence.json" >/dev/null
-
-      - name: Run complete offline clean-tree CI
-        env:
-          CARGO_NET_OFFLINE: "true"
-        run: make ci
+          set +e
+          python3 scripts/check-clean-tree -- sh -c \
+            'python3 scripts/conformance > "$RUNNER_TEMP/bifrost-evidence.json"'
+          rc=$?
+          python3 -m json.tool "$RUNNER_TEMP/bifrost-evidence.json"
+          exit "$rc"
