@@ -46,10 +46,15 @@ from strongest to weakest:
 
 ### 1.2 Value-level nondeterminism (real but narrow)
 
-IEEE-754 basic operations — add, sub, mul, div, sqrt, FMA — are
-bit-deterministic on compliant hardware, scalar and SIMD alike. The same
-binary executing the same instruction sequence on the same inputs produces
-the same bits. The actual hazard list is short:
+Integer and bitwise SIMD — the bulk of real-world vector code, e.g. byte
+scanning, comparisons, and masking of the kind popularized in Mitchell
+Hashimoto's "Everyone Should Know SIMD" (mitchellh.com, 2026) — is fully
+value-deterministic: vector width changes which instructions execute, never
+what they compute, and width is frozen by the pinned binary plus the locked
+CPU profile. IEEE-754 basic operations — add, sub, mul, div, sqrt, FMA —
+are likewise bit-deterministic on compliant hardware, scalar and SIMD
+alike. The same binary executing the same instruction sequence on the same
+inputs produces the same bits. The actual hazard list is short:
 
 - **Approximation instructions.** x86 `RCPPS`/`RSQRTPS` and their VEX/EVEX
   successors are specified only by an error bound (≤ 1.5·2⁻¹²); exact
