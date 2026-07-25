@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/pyrex41/urdr/build/locks/schemas/shen-ports-lock.schema.json",
+  "title": "Urdr pinned Shen runtime dependencies",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kernel_version",
+    "ports"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "kernel_version": {
+      "const": "41.2"
+    },
+    "ports": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "$ref": "#/$defs/port"
+      },
+      "allOf": [
+        {
+          "contains": {
+            "properties": {
+              "name": {
+                "const": "shen-go"
+              },
+              "required": {
+                "const": true
+              }
+            },
+            "required": [
+              "name",
+              "required"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "name": {
+                "const": "shen-lua"
+              },
+              "required": {
+                "const": true
+              }
+            },
+            "required": [
+              "name",
+              "required"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "name": {
+                "const": "shen-cl"
+              },
+              "required": {
+                "const": true
+              }
+            },
+            "required": [
+              "name",
+              "required"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "properties": {
+              "name": {
+                "const": "shen-rust"
+              },
+              "required": {
+                "const": true
+              }
+            },
+            "required": [
+              "name",
+              "required"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "port": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "repository",
+        "commit",
+        "destination",
+        "kernel_version",
+        "required"
+      ],
+      "properties": {
+        "name": {
+          "enum": [
+            "shen-go",
+            "shen-lua",
+            "shen-cl",
+            "shen-rust",
+            "shenscript"
+          ]
+        },
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "destination": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "kernel_version": {
+          "const": "41.2"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
