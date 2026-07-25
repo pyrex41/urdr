@@ -1,0 +1,1 @@
+281:(6:record(7:command(6:record(4:name(6:symbol4:echo))(5:value(4:text3:one))))(15:idempotency-key(4:text8:effect-1))(4:kind(6:symbol7:command))(16:protocol-version(3:int1:1))(10:request-id(4:text15:request-command))(14:schema-version(3:int1:1))(10:session-id(4:text12:session-test))),
