@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""Dependency-free repository formatting and hygiene checks."""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+TEXT_SUFFIXES = {
+    ".c",
+    ".h",
+    ".json",
+    ".md",
+    ".py",
+    ".shen",
+    ".sh",
+    ".toml",
+    ".txt",
+    ".yaml",
+    ".yml",
+}
+TAB_FREE_SUFFIXES = {".json", ".md", ".py", ".yaml", ".yml"}
+ACTION_PIN = re.compile(r"^[^@\s]+@[0-9a-f]{40}$")
+GENERATED_PARTS = {
+    "__pycache__",
+    ".cache",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "artifacts",
+    "dist",
+    "out",
+    "tmp",
+}
+
+
+def git_output(*arguments: str) -> bytes:
+    return subprocess.run(
+        ["git", *arguments],
+        cwd=ROOT,
+        check=True,
+        stdout=subprocess.PIPE,
+    ).stdout
+
+
+def repository_files() -> list[Path]:
+    output = git_output("ls-files", "--cached", "--others", "--exclude-standard", "-z")
+    return sorted(
+        (ROOT / name.decode("utf-8") for name in output.split(b"\0") if name),
+        key=lambda path: path.as_posix(),
+    )
+
+
+def is_text(path: Path, data: bytes) -> bool:
+    return (
+        path.name in {"Makefile", ".gitignore"}
+        or path.suffix.lower() in TEXT_SUFFIXES
+        or data.startswith(b"#!")
+    )
+
+
+def check_file(path: Path, errors: list[str]) -> None:
+    relative = path.relative_to(ROOT).as_posix()
+    if path.is_symlink():
+        resolved = path.resolve()
+        if ROOT not in resolved.parents:
+            errors.append(f"{relative}: symlink escapes the repository")
+        return
+    data = path.read_bytes()
+    if not is_text(path, data):
+        return
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as error:
+        errors.append(f"{relative}: invalid UTF-8 ({error})")
+        return
+    if "\r" in text:
+        errors.append(f"{relative}: CR/CRLF line ending")
+    if data and not data.endswith(b"\n"):
+        errors.append(f"{relative}: missing final newline")
+    for number, line in enumerate(text.splitlines(), start=1):
+        markdown_break = path.suffix.lower() == ".md" and line.endswith("  ")
+        if line.endswith((" ", "\t")) and not markdown_break:
+            errors.append(f"{relative}:{number}: trailing whitespace")
+        if path.suffix.lower() in TAB_FREE_SUFFIXES and "\t" in line:
+            errors.append(f"{relative}:{number}: tab character")
+    if path.suffix.lower() == ".json":
+        try:
+            json.loads(text)
+        except json.JSONDecodeError as error:
+            errors.append(f"{relative}:{error.lineno}: invalid JSON: {error.msg}")
+    if relative.startswith(".github/workflows/"):
+        for number, line in enumerate(text.splitlines(), start=1):
+            match = re.search(r"^\s*uses:\s*([^#\s]+)", line)
+            if match and not match.group(1).startswith("./"):
+                if not ACTION_PIN.fullmatch(match.group(1)):
+                    errors.append(
+                        f"{relative}:{number}: action must use a full lowercase SHA"
+                    )
+
+
+def check_generated_files(errors: list[str]) -> None:
+    tracked = git_output("ls-files", "-z").split(b"\0")
+    for encoded in tracked:
+        if not encoded:
+            continue
+        name = encoded.decode("utf-8")
+        path = Path(name)
+        if any(part in GENERATED_PARTS for part in path.parts):
+            errors.append(f"{name}: generated/cache path must not be tracked")
+        if path.suffix in {".pyc", ".pyo"}:
+            errors.append(f"{name}: generated Python bytecode must not be tracked")
+        if name.startswith(("build/downloads/", "build/out/")):
+            errors.append(f"{name}: generated build output must not be tracked")
+
+
+def check_git_whitespace(errors: list[str]) -> None:
+    for arguments, label in [
+        (("diff", "--check"), "working-tree diff"),
+        (("diff", "--cached", "--check"), "staged diff"),
+    ]:
+        result = subprocess.run(
+            ["git", *arguments],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        if result.returncode:
+            detail = result.stdout.strip() or "Git whitespace check failed"
+            errors.append(f"{label}: {detail}")
+
+
+def main() -> None:
+    errors: list[str] = []
+    try:
+        for path in repository_files():
+            check_file(path, errors)
+        check_generated_files(errors)
+        check_git_whitespace(errors)
+    except (OSError, subprocess.CalledProcessError, UnicodeError) as error:
+        errors.append(f"quality check could not inspect repository: {error}")
+    if errors:
+        for error in errors:
+            print(f"fmt-check: {error}", file=sys.stderr)
+        raise SystemExit(1)
+    print("fmt-check: repository text and hygiene checks passed")
+
+
+if __name__ == "__main__":
+    main()

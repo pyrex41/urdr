@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+"""Fail-closed dispatcher for the M0 strict Bifrost gate."""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+REQUIRED = [
+    ROOT / "bifrost.suite.json",
+    ROOT / "build" / "locks" / "tools.lock.json",
+    ROOT / "build" / "locks" / "shen-ports.lock.json",
+    ROOT / "scripts" / "bifrost-gate",
+]
+DEFAULT_IMPLS = "shen-go,shen-lua,shen-cl,shen-rust"
+
+
+def main() -> None:
+    if os.environ.get("URDR_OFFLINE") != "1":
+        print(
+            "conformance: invoke through `make conformance` to enforce offline mode",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    missing = [path.relative_to(ROOT).as_posix() for path in REQUIRED if not path.is_file()]
+    if missing:
+        print(
+            "conformance: M0 gate is not implemented; missing:",
+            file=sys.stderr,
+        )
+        for path in missing:
+            print(f"  {path}", file=sys.stderr)
+        print(
+            "conformance: Agent 8 must add reviewed pins, suite, and strict gate; "
+            "this is a failure, not a skip",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    gate = ROOT / "scripts" / "bifrost-gate"
+    if not os.access(gate, os.X_OK):
+        print("conformance: scripts/bifrost-gate is not executable", file=sys.stderr)
+        raise SystemExit(2)
+    environment = os.environ.copy()
+    environment.setdefault("REQUIRED_IMPLS", DEFAULT_IMPLS)
+    completed = subprocess.run([str(gate)], cwd=ROOT, env=environment)
+    raise SystemExit(completed.returncode)
+
+
+if __name__ == "__main__":
+    main()
