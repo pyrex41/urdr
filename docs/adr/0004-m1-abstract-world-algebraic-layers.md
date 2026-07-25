@@ -21,7 +21,7 @@ scenario DSL, packet/timer/fault models without VMs, state and temporal
 properties, event log, replay, certificates, seeded exploration, and basic
 shrinking (`SPEC.md` §24 M1).
 
-Design review raised three additions beyond the literal M1 list:
+Design review raised four additions beyond the literal M1 list:
 
 1. Making the reducer's implicit transition-system contract an explicit,
    named interface so modeled components (network, timer, fault, and later
@@ -33,6 +33,11 @@ Design review raised three additions beyond the literal M1 list:
 3. Using Shen's integrated Prolog for invariant queries (reachability,
    inductive-invariant checking, counterexample search) over abstract
    models.
+4. Compiling Kubernetes NetworkPolicy manifests to the NetKAT fragment in
+   M1 rather than M4. The resource's semantics are fixed by the published
+   `networking.k8s.io/v1` specification, so the compiler and its symbolic
+   checks need no running cluster; only fidelity to a live CNI
+   enforcement path does.
 
 An earlier design discussion proposed external TLA+ tooling as the
 design-level oracle and L-system rewriting as a generative layer. Neither is
@@ -135,7 +140,57 @@ under a hard admissibility gate:
   canonical model terms and produce canonical results. They never mutate
   world state, draw randomness, or advance time.
 
-### 4. Grammar-based scenario generation; L-systems rejected
+### 4. Kubernetes NetworkPolicy compiler in M1
+
+A compiler from Kubernetes NetworkPolicy manifests (`networking.k8s.io/v1`,
+GA) to the Decision 2 NetKAT fragment is an M1 deliverable. Real clusters
+are not required: the resource's semantics are fixed by the published API
+specification, and scenarios declare the finite pod, namespace, label, IP,
+and port universe the compiler resolves against.
+
+Compiled semantics target **connection admission**: a canonical connection
+attempt `(src, dst, protocol, dst-port)` is admitted iff the source's
+egress side and the destination's ingress side both allow it. Stateful
+reply traffic, which the API allows implicitly for admitted connections,
+is out of the compiled object's scope and is stated as such; the compiler
+models admission, not per-packet connection tracking.
+
+Normative encoding rules, per the pinned specification:
+
+- A pod is isolated for a direction iff at least one policy selects it and
+  that policy's effective `policyTypes` includes the direction. An omitted
+  `policyTypes` defaults to `Ingress`, plus `Egress` iff the policy has an
+  egress section. Unselected directions compile to `nk-id` (allow-all).
+- Allows are additive across selecting policies; rule order never matters.
+- Within one peer element, `namespaceSelector` and `podSelector` conjoin;
+  across elements of a `from`/`to` array, peers union. An empty or omitted
+  `from`/`to` allows all peers for that rule; an empty `podSelector`
+  selects every pod in the namespace.
+- Selectors (`matchLabels` and the `In`, `NotIn`, `Exists`, `DoesNotExist`
+  operators of `matchExpressions`) resolve at compile time to finite
+  unions over the scenario-declared pod and namespace sets.
+- `ipBlock` `cidr`/`except` compiles via software-integer CIDR containment
+  over scenario-declared addresses; `except` subtracts using predicate
+  negation.
+- An omitted `ports` list allows all declared ports for the rule;
+  `port`/`endPort` ranges (GA since Kubernetes v1.25) project onto the
+  scenario-declared port vocabulary; named ports resolve against declared
+  pod container-port maps.
+- Fail-closed compile errors, never silent narrowing: a named port that no
+  declared pod defines, a port or address outside the declared vocabulary,
+  a `hostNetwork` pod named by a scenario that also declares policies, an
+  unknown protocol, or any manifest field the compiler does not model.
+
+The compiled policy participates in the Decision 2 symbolic checks and
+witness bridge: an isolation claim about a manifest set is either
+confirmed by a concrete replayable admission witness or reported
+`unconfirmed`. Fidelity of the compiled semantics to a live CNI
+enforcement path is a separate claim that only M4's real k3s environment
+can test; M1 certifies agreement with the written specification and its
+published conformance examples, and the compiler's output must carry a
+`spec-semantics-only` marker until an M4 fidelity gate exists.
+
+### 5. Grammar-based scenario generation; L-systems rejected
 
 Scenario-family generation (topologies, workloads, fault schedules) may be
 implemented as a search-strategy module that expands a plain generative
@@ -182,7 +237,7 @@ product risk.
 
 ### L-system generative layer
 
-Rejected as scope creep; see Decision 4. A plain seeded grammar achieves
+Rejected as scope creep; see Decision 5. A plain seeded grammar achieves
 the useful goal (reproducible scenario families) inside existing
 transcript rules.
 
@@ -200,10 +255,14 @@ transcript rules.
 - The Prolog gate may delay or remove that surface entirely; the
   explicit-state fallback bounds the loss.
 - New Bifrost cases increase gate runtime on all four ports.
+- The NetworkPolicy compiler binds Urdr to a pinned upstream API
+  semantics; spec revisions require a fixture re-pin, and the
+  `spec-semantics-only` marker prevents overreading M1 results as CNI
+  fidelity before the M4 gate exists.
 - Deferred: probabilistic or history NetKAT extensions, symbolic
-  state-space techniques, abstraction/symmetry reduction, and any
-  Kubernetes NetworkPolicy-to-NetKAT compiler (targeted at M4+, when real
-  cluster policies exist to compile).
+  state-space techniques, abstraction/symmetry reduction, and CNI
+  fidelity validation of compiled NetworkPolicy semantics (M4, against
+  the real k3s environment).
 
 ## Required verification
 
@@ -221,14 +280,22 @@ transcript rules.
 4. Counterexample bridge: every symbolic violation fixture compiles to a
    schedule whose replay reproduces the violation; a deliberately
    non-reproducing counterexample yields `unconfirmed`, never a pass.
-5. Prolog gate suite: solution-order, backtracking, cut, and failure
+5. NetworkPolicy compiler vectors: canonical manifest fixtures — including
+   the upstream documentation examples (multi-peer AND/OR combinations,
+   `ipBlock` with `except`, `port`/`endPort` ranges, named ports,
+   default-deny and allow-all forms, omitted `policyTypes` defaulting) —
+   with expected compiled NetKAT terms and admission verdicts,
+   byte-identical across ports; every fail-closed case in Decision 4
+   rejects with a stable error; mutation tests prove a changed label,
+   selector operator, CIDR, or port flips the affected admission verdict.
+6. Prolog gate suite: solution-order, backtracking, cut, and failure
    fixtures run under the strict four-port gate; any disagreement keeps the
    `analysis`-only label in force. The gate's own mutation tests prove one
    changed fixture or port fails the suite.
-6. Grammar generation: identical seeds reproduce identical scenarios
+7. Grammar generation: identical seeds reproduce identical scenarios
    byte-for-byte across ports; every expansion choice appears in the
    decision transcript; a withheld transcript entry fails replay.
-7. All new cases are wired into `bifrost.suite.json` with pinned program
+8. All new cases are wired into `bifrost.suite.json` with pinned program
    and fixture digests; hosted-CI unavailability is reported as blocked,
    never as passing evidence.
 
@@ -240,6 +307,11 @@ transcript rules.
   <https://doi.org/10.1145/2535838.2535862>
 - Foster et al., "A Coalgebraic Decision Procedure for NetKAT", POPL 2015:
   <https://doi.org/10.1145/2676726.2677011>
+- Kubernetes NetworkPolicy concept documentation (`networking.k8s.io/v1`):
+  <https://kubernetes.io/docs/concepts/services-networking/network-policies/>
+- Kubernetes NetworkPolicy API reference (`policyTypes` defaulting,
+  selector semantics, `endPort` GA in v1.25):
+  <https://kubernetes.io/docs/reference/kubernetes-api/policy-resources/network-policy-v1/>
 - The Shen kernel's Prolog subsystem (defprolog) as distributed with the
   pinned ports recorded in `docs/status/m0.md`
 - Implementation sequencing: `docs/plans/m1-abstract-world.md`

@@ -14,8 +14,8 @@ Deliver the abstract world: a modeled distributed scenario — no VMs, no
 native adapters beyond test fakes — that explores, fails, shrinks, and
 replays identically across the four required Shen runtimes. This
 implements the M1 exit criterion in `SPEC.md` §24 plus the ADR 0004
-deliverables (component interface, NetKAT fragment, gated Prolog layer,
-grammar-based generation).
+deliverables (component interface, NetKAT fragment, NetworkPolicy
+compiler, gated Prolog layer, grammar-based generation).
 
 ## Non-goals
 
@@ -24,13 +24,16 @@ grammar-based generation).
   runs only, and the certificate must say so.
 - Full NetKAT (`dup`/histories), symbolic model checking, abstraction, or
   probabilistic extensions (ADR 0004 deferrals).
-- Kubernetes NetworkPolicy compilation (M4+).
+- CNI fidelity validation of compiled NetworkPolicy semantics. The
+  compiler itself is in scope (Wave C2); checking its output against a
+  live enforcement path requires the M4 k3s environment.
 
 ## Ordering constraints
 
-Waves A–C are sequential foundations. D and E depend on C. F depends on
-D and E. G runs in parallel from the start (it gates a surface, not the
-milestone). H depends on F. Integration (I) closes the milestone.
+Waves A–C are sequential foundations. C2 depends on C only. D and E
+depend on C. F depends on D and E. G runs in parallel from the start (it
+gates a surface, not the milestone). H depends on F. Integration (I)
+closes the milestone and depends on C2.
 
 Every wave lands with: unit tests in the owning module's test root, any
 cross-port case wired into `bifrost.suite.json` with pinned digests,
@@ -108,6 +111,44 @@ Deliverables:
 
 Acceptance: ADR 0004 verifications 2–4 pass on all four ports; mutation
 tests flip verdicts when a policy, field, or value changes.
+
+## Wave C2: Kubernetes NetworkPolicy compiler
+
+Deliverables:
+
+- `shen/world/netpol.shen`: canonical NetworkPolicy manifest
+  representation, strict validation, and the compiler to a NetKAT
+  connection-admission policy per ADR 0004 Decision 4 — isolation
+  detection with `policyTypes` defaulting, additive allows, AND-within-
+  peer / OR-across-peers combination, compile-time selector resolution
+  (`matchLabels` and all four `matchExpressions` operators) against the
+  scenario-declared pod/namespace universe, software-integer CIDR
+  containment for `ipBlock`/`except`, `port`/`endPort` projection onto
+  the declared port vocabulary, and named-port resolution against
+  declared container-port maps.
+- Every unsupported or unresolvable construct is a fail-closed compile
+  error with a stable code: unresolvable named port, out-of-vocabulary
+  port or address, `hostNetwork` pod under policy, unknown protocol,
+  unmodeled field.
+- `scripts/netpol-to-canonical`: offline YAML-to-canonical-frame
+  converter for authoring fixtures. Development convenience only; the
+  checked-in canonical frames are the semantic inputs, per the
+  module-boundary rule that generated residue is never semantics.
+- Fixtures under `protocol/fixtures/v1/netpol/` with a `SHA256SUMS`
+  manifest: the upstream documentation examples (the `test-network-policy`
+  multi-peer example, default-deny-all ingress/egress, allow-all forms,
+  omitted `policyTypes`, `endPort` ranges, named ports) as canonical
+  manifests with expected compiled terms and admission verdicts, plus the
+  full fail-closed rejection set.
+- Bifrost case `netpol-compile` (marker + golden digest).
+- Compiled outputs carry the `spec-semantics-only` marker; nothing in
+  this wave claims CNI fidelity.
+
+Acceptance: ADR 0004 verification 5 passes on all four ports — compiled
+terms and admission verdicts byte-identical, mutation tests flip the
+affected verdict when a label, operator, CIDR, or port changes, and the
+compiled policies participate in the Wave C symbolic checks and witness
+bridge unchanged.
 
 ## Wave D: properties and verdicts
 
@@ -196,7 +237,7 @@ Deliverables:
 - `shen/search/grammar.shen`: a seeded generative grammar expanding
   scenario families (topology size, workload shape, fault schedule),
   every expansion drawn from named streams and recorded as ordinary
-  transcript choices (ADR 0004 Decision 4).
+  transcript choices (ADR 0004 Decision 5).
 - Reproducibility tests: same seed → byte-identical generated scenario on
   all ports; withheld transcript entries fail replay.
 
@@ -217,9 +258,14 @@ Exit demonstration, all on the four required ports:
    symbolically, and the compiled witness schedule reproduces it
    concretely (or reports `unconfirmed` — the demo requires the confirmed
    path).
-5. The modeled-run certificate shows zero non-`pure`/`modeled` events and
-   carries the `modeled-world-only` scope marker.
-6. `make quality` and `make conformance
+5. A fixture NetworkPolicy set (the upstream multi-peer example plus a
+   default-deny) compiles, an isolation claim over it is checked
+   symbolically, and a deliberately over-permissive manifest variant
+   yields a confirmed concrete admission witness for the unintended flow.
+6. The modeled-run certificate shows zero non-`pure`/`modeled` events and
+   carries the `modeled-world-only` scope marker; compiled-policy results
+   carry `spec-semantics-only`.
+7. `make quality` and `make conformance
    REQUIRED_IMPLS=shen-go,shen-lua,shen-cl,shen-rust` pass with all new
    Bifrost cases pinned.
 
@@ -238,6 +284,11 @@ non-claims (no D0–D3 whole-system profile).
   E): every re-pin is deliberate, reviewed, and explained in the change
   that makes it; the adversarial gate-mutation tests must keep failing on
   unexplained digest changes.
+- **Upstream spec drift**: the NetworkPolicy compiler pins
+  `networking.k8s.io/v1` semantics as of the referenced documentation; a
+  future upstream change requires a deliberate fixture re-pin, and the
+  `spec-semantics-only` marker keeps M1 claims honest until the M4 CNI
+  fidelity gate exists.
 - **Scope pull toward M2**: nothing in M1 may touch UAP transports,
   Firecracker, or guest paths; the module-boundary check
   (`scripts/check-owned-paths`) enforces the allowlist per wave.
