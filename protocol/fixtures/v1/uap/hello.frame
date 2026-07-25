@@ -1,0 +1,1 @@
+260:(6:record(4:kind(6:symbol5:hello))(10:request-id(4:text13:request-hello))(21:required-capabilities(4:list(6:symbol16:explicit-collect)(6:symbol13:explicit-poll)))(14:schema-version(3:int1:1))(10:session-id(4:text12:session-test))(8:versions(4:list(3:int1:1)))),

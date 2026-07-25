@@ -1,0 +1,1 @@
+240:(6:record(15:idempotency-key(4:text8:effect-1))(4:kind(6:symbol7:collect))(16:protocol-version(3:int1:1))(7:reclaim(4:bool5:false))(10:request-id(4:text15:request-collect))(14:schema-version(3:int1:1))(10:session-id(4:text12:session-test))),
