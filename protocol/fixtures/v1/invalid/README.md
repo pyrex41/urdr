@@ -1,19 +1,19 @@
-# UAP v1 invalid-input prototypes
+# Invalid UAP/netstring fixtures
 
-These are hostile inputs for the adversarial harness. They are not an accepted
-UAP v1 wire contract. In particular, the current self-contained framing oracle
-uses a four-byte unsigned big-endian length and a provisional 1 MiB limit only
-to make truncation, limits, and every chunk split executable before Agent 6's
-selected framing API is integrated.
+These bytes are adversarial inputs for M0 framing and canonical-value
+rejection. They target the production ADR 0002 netstring frame:
 
-`*.hex` files contain wire bytes as lowercase hexadecimal:
+```text
+decimal-payload-octet-count ":" payload ","
+```
 
-- `malformed-utf8.hex`: invalid UTF-8 byte sequence `c3 28`.
-- `truncated-prefix.hex`: only two bytes of the provisional four-byte prefix.
-- `truncated-payload.hex`: length five followed by only two payload bytes.
-- `over-limit.hex`: declared length 1,048,577, one byte over the prototype cap.
+| Fixture | Attack |
+| --- | --- |
+| `truncated-prefix.hex` | Incomplete length digits; no colon yet |
+| `truncated-payload.hex` | Declared payload length not fully received |
+| `over-limit.hex` | Declared length exceeds the M0 4,096-octet cap |
+| `malformed-utf8.hex` | Well-framed payload containing invalid UTF-8 text |
+| `duplicate-fields.hex` | Well-framed record with a repeated field name |
 
-`duplicate-fields.uap` is valid UTF-8 but repeats `request-id`. A selected
-canonical parser must reject it before any adapter effect. The future protocol
-integration must replace provisional framing assumptions with accepted v1
-limits and error codes while retaining these attack classes.
+Hex files store lowercase hex of the raw wire bytes. Decoders must reject
+every contiguous chunk split without executing adapter effects.

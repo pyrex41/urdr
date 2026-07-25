@@ -35,20 +35,14 @@ launcher has no version option). Environment variables
 `URDR_SHEN_GO`, `URDR_SHEN_LUA`, `URDR_SHEN_CL`, and `URDR_SHEN_RUST` override
 their paths. These are read-only availability probes, not semantic agreement.
 
-## Pending selected APIs
+## Production seams
 
-No M0 production API exists on the `main` revision this branch started from.
-The following bindings are therefore deliberately absent:
+Framing attacks use the production ADR 0002 netstring decoder in
+`adapters.common.uap`. Invalid fixtures under `protocol/fixtures/v1/invalid/`
+are netstring wire bytes.
 
-| Selected owner | Required integration seam |
-| --- | --- |
-| canonical values/text | Replace `parse_integer`, `render_integer`, field sorting, and stable rejection markers with calls through the selected Shen fixture entry point. Preserve exact large-number and runtime-leak attacks. |
-| UAP v1 | Replace `PrototypeFrameDecoder`, provisional u32be framing, 1 MiB cap, and regex duplicate detector with the accepted byte parser and normative limits/error values. Run each invalid fixture at every chunk boundary and assert zero effects. |
-| world reducer | Translate prototype world/events into selected constructors; compare canonical output bytes; assert input world/event hashes remain unchanged after rejection and success. Replace the provisional tie key with the accepted ordering key. |
-| PRNG | Replace SHA-256 prototype coordinates/vector with the selected algorithm and published vectors. Retain independent paths, arbitrary-size counters, and an injectable tail source for bounded-draw rejection. |
-| adapter validation | Map fake observations to selected UAP values and assert canonical fail-closed results for omission, alteration, reorder, downgrade, and invented facts. |
-| Bifrost gate | Register selected positive and negative entry points. A run is acceptable only when all four required ports execute the same attacks and emit byte-identical canonical results. Missing launchers or fixtures must fail, not skip. |
+Other attack classes still use local pure oracles so they remain offline and
+independent of Shen launchers. Cross-runtime agreement for positive semantics
+is owned by `make conformance` / `scripts/bifrost-gate`, not this harness.
 
-The prototype vector in `gate-spec.json` guards this harness against a vacuous
-gate. It is not a candidate production PRNG vector. Likewise, the prototype
-event ordering and framing are attack vehicles, not architecture decisions.
+Milestone status and gate digests live in `docs/status/m0.md`.
