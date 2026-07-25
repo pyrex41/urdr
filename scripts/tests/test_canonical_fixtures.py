@@ -750,7 +750,8 @@ class CanonicalFixtureTests(unittest.TestCase):
             chunks = (wire[index : index + width] for index in range(0, len(wire), width))
             self.assertEqual(expected, decode_chunks(chunks))
 
-    def test_all_required_shen_ports(self) -> None:
+    def assert_all_required_shen_ports(self) -> None:
+        """Explicit conformance helper; ordinary unit tests remain dependency-free."""
         hashes = {}
         for name in PORTS:
             with self.subTest(port=name):
