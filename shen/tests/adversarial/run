@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""Run self-contained attacks and optional read-only Shen launcher probes."""
+
+from __future__ import annotations
+
+import argparse
+import os
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+
+HERE = Path(__file__).resolve().parent
+PORTS = {
+    "shen-go": (
+        "URDR_SHEN_GO",
+        Path("/Users/reuben/projects/shen-go/.bin/shen-go"),
+        ("--version",),
+    ),
+    "shen-lua": (
+        "URDR_SHEN_LUA",
+        Path("/Users/reuben/projects/shen-lua/bin/shen"),
+        ("-q", "-e", "(+ 1 1)"),
+    ),
+    "shen-cl": (
+        "URDR_SHEN_CL",
+        Path("/Users/reuben/projects/urdr-shen-cl-41.2/bin/sbcl/shen"),
+        ("--version",),
+    ),
+    "shen-rust": (
+        "URDR_SHEN_RUST",
+        Path("/Users/reuben/projects/shen-rust/target/release/shen-rust"),
+        ("--version",),
+    ),
+}
+
+
+def run_tests() -> bool:
+    suite = unittest.defaultTestLoader.discover(
+        str(HERE), pattern="test_*.py", top_level_dir=str(HERE)
+    )
+    return unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful()
+
+
+def probe_ports() -> bool:
+    """Probe launchers without retaining generated state; not conformance."""
+
+    all_available = True
+    print("\nRead-only launcher probes (not M0 conformance):")
+    with tempfile.TemporaryDirectory(prefix="urdr-adversarial-port-probe-") as temporary:
+        for name, (environment_name, default, probe_arguments) in PORTS.items():
+            launcher = Path(os.environ.get(environment_name, default))
+            if not launcher.is_file():
+                print(f"  {name}: UNAVAILABLE ({launcher})")
+                all_available = False
+                continue
+            try:
+                completed = subprocess.run(
+                    [str(launcher), *probe_arguments],
+                    cwd=temporary,
+                    input="",
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    timeout=15,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired) as error:
+                print(f"  {name}: PROBE FAILED ({type(error).__name__})")
+                all_available = False
+                continue
+            first_line = next(
+                (line.strip() for line in completed.stdout.splitlines() if line.strip()),
+                "(no version output)",
+            )
+            state = "AVAILABLE" if completed.returncode == 0 else "PROBE FAILED"
+            print(f"  {name}: {state} rc={completed.returncode} {first_line}")
+            all_available = all_available and completed.returncode == 0
+    return all_available
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--probe-ports",
+        action="store_true",
+        help="also run read-only probes for all four required launchers",
+    )
+    arguments = parser.parse_args()
+    tests_ok = run_tests()
+    ports_ok = probe_ports() if arguments.probe_ports else True
+    return 0 if tests_ok and ports_ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
