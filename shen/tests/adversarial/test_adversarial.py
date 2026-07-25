@@ -1,10 +1,11 @@
-"""Executable negative and mutation prototypes for the M0 semantic nucleus."""
+"""Executable negative and mutation tests for the M0 semantic nucleus."""
 
 from __future__ import annotations
 
 import copy
 import itertools
 import json
+import sys
 import unittest
 from pathlib import Path
 
@@ -12,14 +13,12 @@ from oracles import (
     MARKER,
     AdapterCommand,
     GateFailure,
-    PrototypeFrameDecoder,
     Reject,
     all_chunkings,
     bounded_draw,
     canonical_event_order,
     canonical_fields,
     expected_observation,
-    frame,
     parse_integer,
     prng_word,
     reduce_prototype,
@@ -29,13 +28,18 @@ from oracles import (
     verify_gate,
 )
 
-
 ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from adapters.common.uap.codec import CanonicalCodec, CodecError  # noqa: E402
+from adapters.common.uap.transport import FrameDecoder  # noqa: E402
+
 INVALID = ROOT / "protocol/fixtures/v1/invalid"
 
 
 def fixture_bytes(name: str) -> bytes:
-    return bytes.fromhex((INVALID / name).read_text(encoding="ascii"))
+    return bytes.fromhex((INVALID / name).read_text(encoding="ascii").strip())
 
 
 def reject_code(callable_, *arguments) -> str:
@@ -89,53 +93,60 @@ class RuntimeLeakAttacks(unittest.TestCase):
 
 
 class FramingAttacks(unittest.TestCase):
+    """Hostile framing against the production ADR 0002 netstring decoder."""
+
     def test_every_chunk_split_of_valid_frame_is_equivalent(self) -> None:
-        wire = frame(b"()")
+        from adapters.common.uap.codec import NULL
+
+        wire = CanonicalCodec().encode_frame(NULL)
+        self.assertEqual(wire, b"8:(4:null),")
         self.assertEqual(sum(1 for _ in all_chunkings(wire)), 2 ** (len(wire) - 1))
         for chunks in all_chunkings(wire):
-            decoder = PrototypeFrameDecoder()
-            records: list[str] = []
+            decoder = FrameDecoder()
+            values = []
             for chunk in chunks:
-                records.extend(decoder.feed(chunk))
+                values.extend(decoder.feed(chunk))
             decoder.finish()
-            self.assertEqual(records, ["()"])
+            self.assertEqual(len(values), 1)
 
-    def assert_rejected_without_effect(self, wire: bytes, code: str) -> None:
+    def assert_rejected_without_effect(self, wire: bytes, codes: set[str]) -> None:
         chunkings = [(wire,)] + [
             (wire[:split], wire[split:]) for split in range(1, len(wire))
         ]
         for chunks in chunkings:
-            effects: list[str] = []
-            decoder = PrototypeFrameDecoder(effects.append)
-            with self.assertRaises(Reject) as caught:
+            effects: list[object] = []
+            decoder = FrameDecoder()
+            with self.assertRaises(CodecError) as caught:
                 for chunk in chunks:
-                    decoder.feed(chunk)
+                    values = decoder.feed(chunk)
+                    effects.extend(values)
                 decoder.finish()
-            self.assertEqual(caught.exception.code, code)
+            self.assertIn(caught.exception.code, codes)
             self.assertEqual(effects, [])
 
     def test_malformed_utf8_fails_for_every_chunk_split(self) -> None:
         self.assert_rejected_without_effect(
-            frame(fixture_bytes("malformed-utf8.hex")), "malformed-utf8"
+            fixture_bytes("malformed-utf8.hex"), {"utf8-invalid"}
         )
 
     def test_duplicate_fields_fail_before_effect(self) -> None:
-        payload = (INVALID / "duplicate-fields.uap").read_bytes()
-        self.assert_rejected_without_effect(frame(payload), "duplicate-field")
+        self.assert_rejected_without_effect(
+            fixture_bytes("duplicate-fields.hex"), {"record-duplicate"}
+        )
 
     def test_truncated_prefix_fails(self) -> None:
         self.assert_rejected_without_effect(
-            fixture_bytes("truncated-prefix.hex"), "truncated-prefix"
+            fixture_bytes("truncated-prefix.hex"), {"frame-truncated"}
         )
 
     def test_truncated_payload_fails_for_every_chunk_split(self) -> None:
         self.assert_rejected_without_effect(
-            fixture_bytes("truncated-payload.hex"), "truncated-payload"
+            fixture_bytes("truncated-payload.hex"), {"frame-truncated"}
         )
 
     def test_over_limit_fails_as_soon_as_prefix_completes(self) -> None:
         self.assert_rejected_without_effect(
-            fixture_bytes("over-limit.hex"), "frame-over-limit"
+            fixture_bytes("over-limit.hex"), {"frame-too-large"}
         )
 
 

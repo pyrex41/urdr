@@ -19,19 +19,19 @@
   },
   "invalid_fixtures": {
     "protocol/fixtures/v1/invalid/malformed-utf8.hex": {
-      "wire_hex": "c328"
+      "wire_hex": "31323a28343a74657874323ac328292c"
     },
     "protocol/fixtures/v1/invalid/truncated-prefix.hex": {
-      "wire_hex": "0000"
+      "wire_hex": "3132"
     },
     "protocol/fixtures/v1/invalid/truncated-payload.hex": {
-      "wire_hex": "000000056162"
+      "wire_hex": "353a68656c6c"
     },
     "protocol/fixtures/v1/invalid/over-limit.hex": {
-      "wire_hex": "00100001"
+      "wire_hex": "343039373a"
     },
-    "protocol/fixtures/v1/invalid/duplicate-fields.uap": {
-      "utf8": "(uap (version 1) (request-id 41) (request-id 42) (kind probe))\n"
+    "protocol/fixtures/v1/invalid/duplicate-fields.hex": {
+      "wire_hex": "34303a28363a7265636f726428313a6128333a696e74313a31292928313a6128333a696e74313a322929292c"
     }
   }
 }
