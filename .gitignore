@@ -1,0 +1,36 @@
+# Editor and operating-system state
+.DS_Store
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Python/tool caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage/
+
+# Local environments
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+
+# Bootstrap downloads and generated output
+.cache/
+build/downloads/
+build/out/
+dist/
+out/
+tmp/
+
+# Runtime and test artifacts
+artifacts/
+*.log
+*.pid

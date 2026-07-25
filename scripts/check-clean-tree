@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+"""Run a command and prove it leaves Git-visible repository state unchanged."""
+
+from __future__ import annotations
+
+import difflib
+import subprocess
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def status() -> str:
+    return subprocess.run(
+        ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    ).stdout
+
+
+def main() -> None:
+    arguments = sys.argv[1:]
+    if arguments and arguments[0] == "--":
+        arguments = arguments[1:]
+    if not arguments:
+        print("usage: scripts/check-clean-tree -- COMMAND [ARG ...]", file=sys.stderr)
+        raise SystemExit(2)
+
+    before = status()
+    completed = subprocess.run(arguments, cwd=ROOT)
+    after = status()
+    if before != after:
+        print(
+            "clean-tree: command changed Git-visible repository state",
+            file=sys.stderr,
+        )
+        for line in difflib.unified_diff(
+            before.splitlines(),
+            after.splitlines(),
+            fromfile="before",
+            tofile="after",
+            lineterm="",
+        ):
+            print(line, file=sys.stderr)
+        raise SystemExit(1)
+    print("clean-tree: command left repository state unchanged")
+    if completed.returncode:
+        raise SystemExit(completed.returncode)
+
+
+if __name__ == "__main__":
+    main()

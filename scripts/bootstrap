@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+"""Materialize exact dependency commits from reviewed lock files."""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[1]
+LOCK_DIR = ROOT / "build" / "locks"
+CACHE_DIR = ROOT / ".cache" / "urdr" / "dependencies"
+COMMIT = re.compile(r"^[0-9a-f]{40}$")
+NAME = re.compile(r"^[a-z][a-z0-9-]*$")
+REQUIRED_PORTS = {"shen-go", "shen-lua", "shen-cl", "shen-rust"}
+
+
+class LockError(Exception):
+    """A lock file cannot safely drive bootstrap."""
+
+
+def fail(message: str) -> "NoReturn":
+    print(f"bootstrap: {message}", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def load_json(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        raise LockError(
+            f"missing {path.relative_to(ROOT)}; add reviewed, commit-pinned "
+            "Agent 8 lock files before bootstrapping"
+        )
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise LockError(f"cannot parse {path.relative_to(ROOT)}: {error}") from error
+    if not isinstance(value, dict):
+        raise LockError(f"{path.relative_to(ROOT)} must contain a JSON object")
+    return value
+
+
+def dependency(value: Any, source: str) -> dict[str, str]:
+    if not isinstance(value, dict):
+        raise LockError(f"{source} entries must be objects")
+    allowed = {"name", "repository", "commit", "destination"}
+    extra = set(value) - allowed
+    missing = allowed - set(value)
+    if extra or missing:
+        raise LockError(
+            f"{source} entry fields mismatch; missing={sorted(missing)}, "
+            f"extra={sorted(extra)}"
+        )
+    if not isinstance(value["name"], str) or not NAME.fullmatch(value["name"]):
+        raise LockError(f"{source} has invalid dependency name")
+    if not isinstance(value["destination"], str) or not NAME.fullmatch(
+        value["destination"]
+    ):
+        raise LockError(f"{source} has unsafe destination")
+    if not isinstance(value["repository"], str) or not value["repository"]:
+        raise LockError(f"{source} has empty repository")
+    if not isinstance(value["commit"], str) or not COMMIT.fullmatch(value["commit"]):
+        raise LockError(f"{source} commit must be a full lowercase 40-character SHA")
+    return {key: value[key] for key in allowed}
+
+
+def load_dependencies() -> list[dict[str, str]]:
+    tools = load_json(LOCK_DIR / "tools.lock.json")
+    ports = load_json(LOCK_DIR / "shen-ports.lock.json")
+    if tools.get("schema_version") != 1 or set(tools) != {"schema_version", "tools"}:
+        raise LockError("tools.lock.json does not match schema version 1")
+    if not isinstance(tools["tools"], list) or not tools["tools"]:
+        raise LockError("tools.lock.json must pin at least one tool")
+
+    expected_port_fields = {"schema_version", "kernel_version", "ports"}
+    if ports.get("schema_version") != 1 or set(ports) != expected_port_fields:
+        raise LockError("shen-ports.lock.json does not match schema version 1")
+    if ports["kernel_version"] != "41.2":
+        raise LockError("all Wave 0 Shen ports must use kernel 41.2")
+    if not isinstance(ports["ports"], list):
+        raise LockError("shen-ports.lock.json ports must be an array")
+
+    result = [dependency(item, "tools.lock.json") for item in tools["tools"]]
+    required_names: set[str] = set()
+    for item in ports["ports"]:
+        if not isinstance(item, dict):
+            raise LockError("shen-ports.lock.json entries must be objects")
+        port_only = {"kernel_version", "required"}
+        base = {key: value for key, value in item.items() if key not in port_only}
+        parsed = dependency(base, "shen-ports.lock.json")
+        if set(item) != set(base) | port_only:
+            raise LockError("shen-ports.lock.json entry has unknown fields")
+        if item["kernel_version"] != "41.2":
+            raise LockError(f"{parsed['name']} does not pin Shen kernel 41.2")
+        if not isinstance(item["required"], bool):
+            raise LockError(f"{parsed['name']} required must be boolean")
+        if item["required"]:
+            required_names.add(parsed["name"])
+        result.append(parsed)
+
+    if not REQUIRED_PORTS.issubset(required_names):
+        missing = sorted(REQUIRED_PORTS - required_names)
+        raise LockError(f"required Shen ports are not pinned: {', '.join(missing)}")
+    names = [item["name"] for item in result]
+    destinations = [item["destination"] for item in result]
+    if len(names) != len(set(names)):
+        raise LockError("dependency names must be unique across lock files")
+    if len(destinations) != len(set(destinations)):
+        raise LockError("dependency destinations must be unique across lock files")
+    return result
+
+
+def git(*arguments: str, cwd: Path) -> None:
+    subprocess.run(["git", *arguments], cwd=cwd, check=True)
+
+
+def materialize(item: dict[str, str]) -> None:
+    destination = CACHE_DIR / item["destination"]
+    if destination.exists():
+        if not (destination / ".git").is_dir():
+            raise LockError(f"{destination} exists but is not a Git checkout")
+        remote = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            cwd=destination,
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+        ).stdout.strip()
+        if remote != item["repository"]:
+            raise LockError(
+                f"{item['name']} cache remote is {remote!r}, expected "
+                f"{item['repository']!r}; remove the cache explicitly"
+            )
+    else:
+        destination.mkdir(parents=True)
+        git("init", "--quiet", cwd=destination)
+        git("remote", "add", "origin", item["repository"], cwd=destination)
+
+    print(f"bootstrap: fetching {item['name']} at {item['commit']}")
+    git("fetch", "--quiet", "--depth=1", "origin", item["commit"], cwd=destination)
+    git("checkout", "--quiet", "--detach", item["commit"], cwd=destination)
+    actual = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=destination,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    ).stdout.strip()
+    if actual != item["commit"]:
+        raise LockError(f"{item['name']} resolved to {actual}, expected {item['commit']}")
+
+
+def main() -> None:
+    if os.environ.get("URDR_BOOTSTRAP_NETWORK") != "1":
+        fail("invoke this networked operation through `make bootstrap`")
+    try:
+        dependencies = load_dependencies()
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        for item in dependencies:
+            materialize(item)
+    except (LockError, OSError, subprocess.CalledProcessError) as error:
+        fail(str(error))
+    print(f"bootstrap: materialized {len(dependencies)} exact dependency commits")
+
+
+if __name__ == "__main__":
+    main()
