@@ -1,0 +1,1 @@
+208:(6:record(15:idempotency-key(4:text8:effect-1))(4:kind(6:symbol4:poll))(16:protocol-version(3:int1:1))(10:request-id(4:text12:request-poll))(14:schema-version(3:int1:1))(10:session-id(4:text12:session-test))),
