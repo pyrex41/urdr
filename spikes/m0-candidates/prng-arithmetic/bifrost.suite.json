@@ -1,0 +1,18 @@
+{
+  "cases": [
+    {
+      "doc": "software bigint, framed Philox blocks, and unbiased sampling",
+      "expect": "agreement",
+      "marker": "ALL PASS",
+      "mode": "script",
+      "name": "prng-arithmetic-self-suite",
+      "program": "spikes/m0-candidates/prng-arithmetic/run-tests.shen"
+    }
+  ],
+  "name": "urdr-prng-arithmetic-candidate",
+  "root": "../../..",
+  "strip_line_prefixes": [
+    "loaded",
+    "prng-arithmetic:"
+  ]
+}
