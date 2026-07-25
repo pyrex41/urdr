@@ -1,0 +1,5 @@
+(set *hush* true)
+(load "spikes/m0-candidates/canonical-rfc9804/canonical.shen")
+(load "spikes/m0-candidates/canonical-rfc9804/tests/tests.shen")
+(set *hush* false)
+(cr-run-tests "spikes/m0-candidates/canonical-rfc9804/fixtures.tsv")
