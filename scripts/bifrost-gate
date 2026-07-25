@@ -1,0 +1,437 @@
+#!/usr/bin/env python3
+"""Strict, machine-readable four-port Bifrost conformance gate."""
+
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+from types import ModuleType
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[1]
+CACHE = ROOT / ".cache" / "urdr" / "dependencies"
+SUITE_PATH = ROOT / "bifrost.suite.json"
+KERNEL_VERSION = "41.2"
+REQUIRED_IMPLS = ("shen-go", "shen-lua", "shen-cl", "shen-rust")
+CASE_NAME = "m0-temporary-lowercase-hex"
+PAYLOAD = "757264722d6d302d74656d706f726172792d73656d616e7469632d676174652d7631"
+FIXTURE_SHA256 = "8e1f8fe80ad8f2c18b00f0ac37f1a2667598b97187d59aa1951c3f1e646fb778"
+PAYLOAD_SHA256 = "b3126a13aabfdf5b3cc22dc462a20b822c01cba3ad6102578de27f2ee6848741"
+LOWER_HEX = re.compile(r"^[0-9a-f]+$")
+FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
+
+EXPECTED_PINS = {
+    "bifrost": "51d24d81f7c7a15d382f1c02238453693bb46158",
+    "shen-go": "8775fc366945bfe863f0cb0e0af2ada901ae1819",
+    "shen-lua": "c85ad7edc79e183918b67862b8a60fa17c7ac9b9",
+    "shen-cl": "8df94be8365ab48561655673593c137f55f92cdb",
+    "shen-rust": "a529924d7f9c16d839397148cf60747f736dd7b1",
+    "shenscript": "35b8269f75afbac9939ac0e8c7838cc4bf00d448",
+}
+
+CHECKOUT_ENV = {
+    "bifrost": "URDR_BIFROST_CHECKOUT",
+    "shen-go": "URDR_SHEN_GO_CHECKOUT",
+    "shen-lua": "URDR_SHEN_LUA_CHECKOUT",
+    "shen-cl": "URDR_SHEN_CL_CHECKOUT",
+    "shen-rust": "URDR_SHEN_RUST_CHECKOUT",
+    "shenscript": "URDR_SHENSCRIPT_CHECKOUT",
+}
+
+LAUNCHERS = {
+    "shen-go": Path(".bin/shen-go"),
+    "shen-lua": Path("bin/shen"),
+    "shen-cl": Path("bin/sbcl/shen"),
+    "shen-rust": Path("target/release/shen-rust"),
+}
+
+BIFROST_LAUNCHER_ENV = {
+    "shen-go": "BIFROST_SHEN_GO",
+    "shen-lua": "BIFROST_SHEN_LUA",
+    "shen-cl": "BIFROST_SHEN_CL",
+    "shen-rust": "BIFROST_SHEN_RUST",
+}
+
+
+class GateFailure(Exception):
+    """A strict conformance requirement was not met."""
+
+    def __init__(self, message: str, exit_code: int = 1) -> None:
+        super().__init__(message)
+        self.exit_code = exit_code
+
+
+def sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def load_json(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise GateFailure(f"cannot read {path.relative_to(ROOT)}: {error}", 2) from error
+    if not isinstance(value, dict):
+        raise GateFailure(f"{path.relative_to(ROOT)} must contain a JSON object", 2)
+    return value
+
+
+def parse_required_impls(value: str) -> tuple[str, ...]:
+    names = tuple(part.strip() for part in value.split(",") if part.strip())
+    if len(names) < len(REQUIRED_IMPLS):
+        raise GateFailure("required implementation matrix contains fewer than four ports")
+    if len(names) != len(set(names)):
+        raise GateFailure("required implementation matrix contains duplicate ports")
+    if set(names) != set(REQUIRED_IMPLS):
+        raise GateFailure(
+            "required implementation matrix must be exactly "
+            + ",".join(REQUIRED_IMPLS)
+        )
+    return REQUIRED_IMPLS
+
+
+def load_and_validate_locks() -> dict[str, dict[str, Any]]:
+    tools = load_json(ROOT / "build" / "locks" / "tools.lock.json")
+    ports = load_json(ROOT / "build" / "locks" / "shen-ports.lock.json")
+    if set(tools) != {"schema_version", "tools"} or tools.get("schema_version") != 1:
+        raise GateFailure("tools lock does not match strict schema version 1", 2)
+    if (
+        set(ports) != {"schema_version", "kernel_version", "ports"}
+        or ports.get("schema_version") != 1
+        or ports.get("kernel_version") != KERNEL_VERSION
+    ):
+        raise GateFailure("Shen ports lock does not pin kernel 41.2", 2)
+
+    entries: dict[str, dict[str, Any]] = {}
+    for item in list(tools.get("tools", [])) + list(ports.get("ports", [])):
+        if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+            raise GateFailure("dependency lock contains a malformed entry", 2)
+        name = item["name"]
+        if name in entries:
+            raise GateFailure(f"dependency {name} is pinned more than once", 2)
+        entries[name] = item
+
+    if set(entries) != set(EXPECTED_PINS):
+        raise GateFailure("dependency lock names differ from the reviewed strict matrix", 2)
+    for name, expected in EXPECTED_PINS.items():
+        item = entries[name]
+        if item.get("commit") != expected or not FULL_SHA.fullmatch(str(item.get("commit", ""))):
+            raise GateFailure(f"{name} lock commit differs from reviewed pin", 2)
+        if item.get("destination") != name:
+            raise GateFailure(f"{name} lock destination must be {name}", 2)
+        if name in REQUIRED_IMPLS:
+            if item.get("required") is not True or item.get("kernel_version") != KERNEL_VERSION:
+                raise GateFailure(f"{name} must be required at kernel 41.2", 2)
+    if entries["shenscript"].get("required") is not False:
+        raise GateFailure("ShenScript must remain optional", 2)
+    return entries
+
+
+def validate_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    expected_top = {
+        "schema_version",
+        "name",
+        "root",
+        "default_cwd",
+        "temporary_integration_seam",
+        "cases",
+    }
+    if set(manifest) != expected_top:
+        raise GateFailure("suite manifest fields differ from the strict temporary seam", 2)
+    if (
+        manifest.get("schema_version") != 1
+        or manifest.get("name") != "urdr-m0-strict-conformance"
+        or manifest.get("root") != "."
+        or manifest.get("default_cwd") != ".cache/urdr/bifrost-runtime"
+        or manifest.get("temporary_integration_seam") is not True
+    ):
+        raise GateFailure("suite manifest does not declare the reviewed temporary seam", 2)
+    cases = manifest.get("cases")
+    if not isinstance(cases, list) or len(cases) != 1 or not isinstance(cases[0], dict):
+        raise GateFailure("suite must contain exactly one temporary M0 case", 2)
+    case = cases[0]
+    required_fields = {
+        "name",
+        "mode",
+        "expr",
+        "expect",
+        "golden",
+        "marker",
+        "payload_encoding",
+        "raw_fixture_sha256",
+        "payload_sha256",
+        "temporary_integration_seam",
+        "doc",
+    }
+    if set(case) != required_fields:
+        if "marker" not in case:
+            raise GateFailure("suite case is missing its mandatory marker", 2)
+        raise GateFailure("suite case fields differ from the strict temporary fixture", 2)
+    if case.get("name") != CASE_NAME or case.get("mode") != "eval":
+        raise GateFailure("suite case identity or mode changed", 2)
+    if case.get("expect") != "output":
+        raise GateFailure("suite must compare every port to a checked-in golden", 2)
+    if case.get("golden") != PAYLOAD:
+        raise GateFailure("suite golden changed from the reviewed lowercase-hex payload", 2)
+    if case.get("marker") != PAYLOAD:
+        raise GateFailure("suite marker is missing or changed", 2)
+    if case.get("payload_encoding") != "lowercase-hex":
+        raise GateFailure("suite payload encoding must be lowercase-hex", 2)
+    if not LOWER_HEX.fullmatch(PAYLOAD) or len(PAYLOAD) % 2:
+        raise GateFailure("reviewed payload is not even-length lowercase hex", 2)
+    expression = case.get("expr")
+    if not isinstance(expression, str):
+        raise GateFailure("suite raw fixture must be a UTF-8 expression", 2)
+    actual_fixture_sha = sha256_text(expression)
+    if (
+        case.get("raw_fixture_sha256") != FIXTURE_SHA256
+        or actual_fixture_sha != FIXTURE_SHA256
+    ):
+        raise GateFailure("checked-in raw fixture SHA-256 changed", 2)
+    if (
+        case.get("payload_sha256") != PAYLOAD_SHA256
+        or sha256_text(PAYLOAD) != PAYLOAD_SHA256
+    ):
+        raise GateFailure("checked-in payload SHA-256 changed", 2)
+    if case.get("temporary_integration_seam") is not True:
+        raise GateFailure("suite must remain explicitly temporary until M0 lands", 2)
+    return case
+
+
+def checkout_path(name: str, entry: dict[str, Any]) -> Path:
+    override = os.environ.get(CHECKOUT_ENV[name])
+    return Path(override).expanduser().resolve() if override else CACHE / entry["destination"]
+
+
+def git_output(checkout: Path, *arguments: str) -> str:
+    try:
+        return subprocess.run(
+            ["git", *arguments],
+            cwd=checkout,
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise GateFailure(f"cannot inspect pinned checkout {checkout}: {error}", 2) from error
+
+
+def verify_checkouts(
+    entries: dict[str, dict[str, Any]]
+) -> tuple[dict[str, Path], dict[str, dict[str, str]]]:
+    paths: dict[str, Path] = {}
+    evidence: dict[str, dict[str, str]] = {}
+    for name in ("bifrost", *REQUIRED_IMPLS):
+        checkout = checkout_path(name, entries[name])
+        if not checkout.is_dir():
+            raise GateFailure(f"missing pinned checkout for {name}: {checkout}", 2)
+        actual = git_output(checkout, "rev-parse", "HEAD")
+        expected = EXPECTED_PINS[name]
+        if actual != expected:
+            raise GateFailure(f"{name} checkout is {actual}, expected {expected}", 2)
+        dirty = subprocess.run(
+            ["git", "diff", "--quiet", "HEAD", "--"],
+            cwd=checkout,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if dirty.returncode != 0:
+            raise GateFailure(f"{name} checkout has modified tracked files", 2)
+        paths[name] = checkout
+        evidence[name] = {
+            "commit": actual,
+            "checkout": str(checkout),
+        }
+    evidence["shenscript"] = {
+        "commit": EXPECTED_PINS["shenscript"],
+        "required": "false",
+    }
+    return paths, evidence
+
+
+def resolve_launchers(paths: dict[str, Path]) -> dict[str, Path]:
+    launchers: dict[str, Path] = {}
+    for name in REQUIRED_IMPLS:
+        path = paths[name] / LAUNCHERS[name]
+        if not path.is_file() or not os.access(path, os.X_OK):
+            raise GateFailure(f"missing executable launcher for {name}: {path}", 2)
+        launchers[name] = path
+        os.environ[BIFROST_LAUNCHER_ENV[name]] = str(path)
+    return launchers
+
+
+def import_bifrost(path: Path) -> ModuleType:
+    runner = path / "bifrost.py"
+    if not runner.is_file():
+        raise GateFailure(f"pinned Bifrost runner is missing: {runner}", 2)
+    spec = importlib.util.spec_from_file_location("urdr_pinned_bifrost", runner)
+    if spec is None or spec.loader is None:
+        raise GateFailure("cannot construct pinned Bifrost module", 2)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def validate_execution(
+    available_names: list[str],
+    skipped: dict[str, str],
+    case_result: dict[str, Any],
+    versions: dict[str, str],
+) -> dict[str, dict[str, Any]]:
+    if len(available_names) < len(REQUIRED_IMPLS):
+        raise GateFailure("Bifrost made fewer than four required ports available")
+    if set(available_names) != set(REQUIRED_IMPLS):
+        raise GateFailure("Bifrost available matrix differs from the four required ports")
+    missing = [name for name in REQUIRED_IMPLS if name in skipped]
+    if missing:
+        raise GateFailure("Bifrost skipped required ports: " + ",".join(missing))
+    if case_result.get("verdict") == "DIVERGE":
+        raise GateFailure("Bifrost reported DIVERGE")
+    if case_result.get("verdict") != "PASS":
+        raise GateFailure(f"Bifrost case verdict is {case_result.get('verdict')!r}")
+
+    per_impl = case_result.get("per_impl")
+    if not isinstance(per_impl, dict) or set(per_impl) != set(REQUIRED_IMPLS):
+        raise GateFailure("Bifrost result does not contain exactly four required ports")
+    port_evidence: dict[str, dict[str, Any]] = {}
+    for name in REQUIRED_IMPLS:
+        version = versions.get(name)
+        if version != KERNEL_VERSION:
+            raise GateFailure(f"{name} reported kernel {version!r}, expected 41.2")
+        result = per_impl[name]
+        status = result.get("status")
+        if status == "SKIP":
+            raise GateFailure(f"{name} reported SKIP")
+        if status == "DIVERGE":
+            raise GateFailure(f"{name} reported DIVERGE")
+        if status != "PASS":
+            raise GateFailure(f"{name} status is {status!r}, expected PASS")
+        if result.get("timeout"):
+            raise GateFailure(f"{name} timed out")
+        if result.get("rc") != 0:
+            raise GateFailure(f"{name} exited with {result.get('rc')!r}")
+        if result.get("norm") != PAYLOAD:
+            raise GateFailure(f"{name} normalized payload differs from the golden")
+        raw = result.get("raw")
+        if not isinstance(raw, str):
+            raise GateFailure(f"{name} did not return UTF-8 raw output")
+        raw_lines = raw.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        if raw_lines.count(PAYLOAD) != 1:
+            raise GateFailure(
+                f"{name} raw output does not contain exactly one lowercase-hex payload line"
+            )
+        port_evidence[name] = {
+            "kernel_version": version,
+            "status": status,
+            "exit_code": result["rc"],
+            "normalized_payload": result["norm"],
+            "raw_output_sha256": sha256_text(raw),
+            "raw_payload_sha256": sha256_text(PAYLOAD),
+        }
+    return port_evidence
+
+
+def execute(
+    module: ModuleType,
+    required: tuple[str, ...],
+) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
+    (ROOT / ".cache" / "urdr" / "bifrost-runtime").mkdir(parents=True, exist_ok=True)
+    suite = module.build_suite_from_manifest(str(SUITE_PATH))
+    _, case_results, available, skipped, cases = module.run_suite(
+        suite,
+        restrict=set(required),
+        include_heavy=True,
+        progress=False,
+    )
+    if len(cases) != 1 or cases[0].get("name") != CASE_NAME:
+        raise GateFailure("Bifrost did not load exactly the reviewed gate case")
+    if CASE_NAME not in case_results:
+        raise GateFailure("Bifrost omitted the required gate case")
+    versions: dict[str, str] = {}
+    version_case = {
+        "mode": "version",
+        "expect": "version",
+        "contains": KERNEL_VERSION,
+    }
+    for name in available:
+        result = module.run_case_on_impl(
+            name,
+            available[name],
+            version_case,
+            module.TIMEOUT_HEAVY,
+            suite,
+        )
+        if result.get("timeout") or result.get("rc") != 0:
+            raise GateFailure(f"{name} live kernel-version probe failed")
+        match = re.search(r"\b(\d+\.\d+)\b", result.get("raw", ""))
+        versions[name] = match.group(1) if match else "unknown"
+    port_evidence = validate_execution(
+        list(available),
+        skipped,
+        case_results[CASE_NAME],
+        versions,
+    )
+    return port_evidence, skipped
+
+
+def main() -> int:
+    evidence: dict[str, Any] = {
+        "schema_version": 1,
+        "gate": "urdr-m0-strict-bifrost",
+        "status": "ERROR",
+        "required_implementations": list(REQUIRED_IMPLS),
+        "kernel_version": KERNEL_VERSION,
+    }
+    try:
+        if os.environ.get("URDR_OFFLINE") != "1":
+            raise GateFailure("gate must run with URDR_OFFLINE=1", 2)
+        required = parse_required_impls(
+            os.environ.get("REQUIRED_IMPLS", ",".join(REQUIRED_IMPLS))
+        )
+        entries = load_and_validate_locks()
+        manifest = load_json(SUITE_PATH)
+        case = validate_manifest(manifest)
+        paths, dependency_evidence = verify_checkouts(entries)
+        launchers = resolve_launchers(paths)
+        module = import_bifrost(paths["bifrost"])
+        ports, skipped = execute(module, required)
+        evidence.update(
+            {
+                "status": "PASS",
+                "suite_sha256": hashlib.sha256(SUITE_PATH.read_bytes()).hexdigest(),
+                "fixture": {
+                    "case": CASE_NAME,
+                    "temporary_integration_seam": True,
+                    "raw_fixture_sha256": case["raw_fixture_sha256"],
+                    "payload_encoding": case["payload_encoding"],
+                    "payload_sha256": case["payload_sha256"],
+                    "payload": PAYLOAD,
+                },
+                "dependencies": dependency_evidence,
+                "launchers": {name: str(path) for name, path in launchers.items()},
+                "skipped": skipped,
+                "ports": ports,
+            }
+        )
+        print(json.dumps(evidence, indent=2, sort_keys=True))
+        return 0
+    except GateFailure as error:
+        evidence["status"] = "FAIL" if error.exit_code == 1 else "ERROR"
+        evidence["errors"] = [str(error)]
+        print(json.dumps(evidence, indent=2, sort_keys=True))
+        return error.exit_code
+    except Exception as error:  # Fail closed on unexpected Bifrost/tool failures.
+        evidence["errors"] = [f"unexpected gate failure: {type(error).__name__}: {error}"]
+        print(json.dumps(evidence, indent=2, sort_keys=True))
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

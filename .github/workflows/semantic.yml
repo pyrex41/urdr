@@ -1,0 +1,60 @@
+name: strict-semantic-conformance
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: semantic-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  four-port-kernel-41-2:
+    name: Bifrost go/lua/cl/rust kernel 41.2
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out Urdr
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install host runtimes for pinned ports
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes luajit sbcl
+
+      - name: Bootstrap and build exact dependency commits
+        run: |
+          set -eu
+          make bootstrap
+          deps="$GITHUB_WORKSPACE/.cache/urdr/dependencies"
+          mkdir -p "$deps/shen-go/.bin"
+          go build -C "$deps/shen-go" -o "$deps/shen-go/.bin/shen-go" ./cmd/shen
+          cargo build --manifest-path "$deps/shen-rust/Cargo.toml" \
+            --locked --release --bin shen-rust
+          "$deps/shen-lua/bin/shen" -e '(version)'
+          make -C "$deps/shen-cl" fetch
+          make -C "$deps/shen-cl" precompile \
+            SHEN="$deps/shen-go/.bin/shen-go"
+          make -C "$deps/shen-cl" build-sbcl
+
+      - name: Emit strict machine-readable four-port evidence
+        env:
+          URDR_OFFLINE: "1"
+          REQUIRED_IMPLS: shen-go,shen-lua,shen-cl,shen-rust
+          CARGO_NET_OFFLINE: "true"
+        run: |
+          scripts/bifrost-gate | tee "$RUNNER_TEMP/bifrost-evidence.json"
+          python3 -m json.tool "$RUNNER_TEMP/bifrost-evidence.json" >/dev/null
+
+      - name: Run complete offline clean-tree CI
+        env:
+          CARGO_NET_OFFLINE: "true"
+        run: make ci

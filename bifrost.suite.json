@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "name": "urdr-m0-strict-conformance",
+  "root": ".",
+  "default_cwd": ".cache/urdr/bifrost-runtime",
+  "temporary_integration_seam": true,
+  "cases": [
+    {
+      "name": "m0-temporary-lowercase-hex",
+      "mode": "eval",
+      "expr": "(do (pr \"757264722d6d302d74656d706f726172792d73656d616e7469632d676174652d7631\" (stoutput)) (nl))",
+      "expect": "output",
+      "golden": "757264722d6d302d74656d706f726172792d73656d616e7469632d676174652d7631",
+      "marker": "757264722d6d302d74656d706f726172792d73656d616e7469632d676174652d7631",
+      "payload_encoding": "lowercase-hex",
+      "raw_fixture_sha256": "8e1f8fe80ad8f2c18b00f0ac37f1a2667598b97187d59aa1951c3f1e646fb778",
+      "payload_sha256": "b3126a13aabfdf5b3cc22dc462a20b822c01cba3ad6102578de27f2ee6848741",
+      "temporary_integration_seam": true,
+      "doc": "Fail-closed four-port seam until the final M0 Shen entrypoint lands"
+    }
+  ]
+}
