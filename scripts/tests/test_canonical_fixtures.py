@@ -642,17 +642,10 @@ def fixture_output() -> list[str]:
             value = decode_frame(wire)
             if encode_frame(value) != wire:
                 raise AssertionError(f"{name}: re-encode mismatch")
-            splits: Iterable[int]
-            if len(wire) > 1500:
-                splits = (0, 1, 4, 5, 6, 1024, 2048, 3072, len(wire) - 1, len(wire))
-            else:
-                splits = range(len(wire) + 1)
-            for split in splits:
+            for split in range(len(wire) + 1):
                 if decode_chunks((wire[:split], wire[split:])) != [value]:
                     raise AssertionError(f"{name}: split {split}")
-            if len(wire) <= 1500 and decode_chunks(bytes([byte]) for byte in wire) != [
-                value
-            ]:
+            if decode_chunks(bytes([byte]) for byte in wire) != [value]:
                 raise AssertionError(f"{name}: byte chunks")
             output.append(f"valid|{name}|{wire.hex()}")
         else:
@@ -702,11 +695,11 @@ def run_port(name: str, expected: list[str]) -> str:
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            timeout=120,
+            timeout=300,
             check=False,
         )
     except subprocess.TimeoutExpired as error:
-        raise AssertionError(f"{name} timed out after 120 seconds") from error
+        raise AssertionError(f"{name} timed out after 300 seconds") from error
     actual = evidence_lines(result.stdout)
     if result.returncode != 0 or actual != expected:
         raise AssertionError(
