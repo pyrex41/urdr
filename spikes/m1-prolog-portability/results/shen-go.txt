@@ -1,0 +1,116 @@
+== probe-all ==
+PROBE|A1-first-fact|homer
+PROBE|A2-first-rule|bart
+PROBE|A3-facts-findall|[[abe herb] [homer lisa] [homer bart] [abe homer]]
+PROBE|A4-rule-findall|[lisa bart]
+PROBE|A5-member-findall|[c b a]
+PROBE|A6-member-dup|[a c a b a]
+PROBE|A7-append-splits|[[[1 2 3] []] [[1 2] [3]] [[1] [2 3]] [[] [1 2 3]]]
+PROBE|A8-heads-nil|[any nil]
+PROBE|A9-heads-cons|[any cons]
+PROBE|A10-heads-atom|[any]
+PROBE|A11-paths|[[a c d e] [a b d e]]
+PROBE|A12-first-path|[a b d e]
+PROBE|B1-nested-pairs|[[3 b] [3 a] [2 b] [2 a] [1 b] [1 a]]
+PROBE|B2-refilter|[4 2]
+PROBE|B3-dead-end|[]
+PROBE|B4-dead-end-query|failed
+PROBE|B5-triple-split|[[[1 2 3] [] []] [[1 2] [3] []] [[1 2] [] [3]] [[1] [2 3] []] [[1] [2] [3]] [[1] [] [2 3]] [[] [1 2 3] []] [[] [1 2] [3]] [[] [1] [2 3]] [[] [] [1 2 3]]]
+PROBE|B6-deep-append|[[1 2 3 4 5] [1 2 3 4] [1 2 3] [1 2] [1] []]
+PROBE|C1-clause-cut|[one]
+PROBE|C2-clause-cut-other|[three]
+PROBE|C3-conj-cut|[1]
+PROBE|C4-mid-cut|[[1 b] [1 a]]
+PROBE|C5-cut-local|[[2 one] [1 one]]
+PROBE|C6-firstmatch|[a]
+PROBE|C7-naf-true|failed
+PROBE|C8-naf-false|holds
+PROBE|C9-naf-generic-true|failed
+PROBE|C10-naf-generic-false|holds
+PROBE|C11-naf-enumerate|[herb lisa bart]
+PROBE|D1-fact-miss|failed
+PROBE|D2-head-mismatch|failed
+PROBE|D3-findall-empty|[]
+PROBE|D4-mid-conjunction|failed
+PROBE|D5-mid-conjunction-findall|[]
+PROBE|D6-deep-failure|failed
+PROBE|D7-last-literal-fails|failed
+PROBE|D8-when-false|failed
+PROBE|D9-when-true|holds
+PROBE|D10-unify-clash|failed
+PROBE|D11-findall-of-failure-then-success|[]
+PROBE|E1-var-unbound|unbound
+PROBE|E2-var-bound|bound
+PROBE|E3-alias|5
+PROBE|E4-no-capture|[p q]
+PROBE|E5-repeat-query-1|[c b a]
+PROBE|E6-repeat-query-2|[c b a]
+PROBE|E7-fresh-var-in-result|unbound
+PROBE|E8-same-ground|yes
+PROBE|E9-same-clash|failed
+PROBE|E10-occurs-default|failed
+PROBE|E11-occurs-on|failed
+PROBE|E12-occurs-on-nested|failed
+PROBE|E13-occurs-off-compiled|failed
+PROBE|E14-occurs-off-ground|yes
+PROBE|E15-occurs-flag-is-compile-time|failed
+PROBE|E16-plain-is-never-occurs-checks|holds
+PROBE|F1-big-sign-zero|0
+PROBE|F2-big-sign-neg|-1
+PROBE|F3-big-limbs|[9999 0 1]
+PROBE|F4-big-zero-match|holds
+PROBE|F5-big-zero-miss|failed
+PROBE|F6-big-filter|[[big 1 [0 3]] [big 1 [1]]]
+PROBE|F7-big-unify-var|5
+PROBE|F8-symbols|[other urdr.world-step urdr.world.tick]
+PROBE|F9-symbol-tag|tick
+PROBE|F10-symbol-tag-dash|step
+PROBE|F11-improper|[a b]
+PROBE|F12-nested|ok
+PROBE|F13-nested-miss|failed
+PROBE|F14-empty-list-term|[[] [a] []]
+PROBE|F15-negative-integers|[-10000 1 0 -1]
+PROBE|F16-large-integers|[123456789 10000 9999]
+PROBES COMPLETE
+== probe-stress ==
+PROBE|G1-member-20|[20 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1]
+PROBE|G2-append-6|[[[1 2 3 4 5 6] []] [[1 2 3 4 5] [6]] [[1 2 3 4] [5 6]] [[1 2 3] [4 5 6]] [[1 2] [3 4 5 6]] [[1] [2 3 4 5 6]] [[] [1 2 3 4 5 6]]]
+PROBE|G3-nested-findall|[[3 [0 3]] [2 [0 2]] [1 [0 1]]]
+PROBE|G4-depth-100|done
+PROBE|G4b-depth-500|done
+PROBE|G4c-depth-1000|<error>
+PROBE|G4d-depth-1500|<error>
+PROBE|G5-depth-2000|<error>
+PROBE|G5b-depth-5000|<error>
+PROBE|G5c-depth-20000|<error>
+PROBE|G6-permutations-3|[[c b a] [c a b] [b c a] [b a c] [a c b] [a b c]]
+PROBE|G7-permutations-4-count|24
+PROBE|G8-naive-reverse|[8 7 6 5 4 3 2 1]
+PROBE|G9-cut-under-findall|[[8 second] [7 second]]
+PROBE|G10-all-fail|[]
+PROBE|G11-select-order|[[c [a b]] [b [a c]] [a [b c]]]
+PROBE|G12-findall-unbound-template|[k k k]
+PROBE|G13-findall-compound|[[b b] [a a]]
+PROBE|G14-nested-findall-twice|[[0 5]]
+PROBE|H1-assertz-two|[b a]
+PROBE|H2-asserta-front|[b a z]
+PROBE|H3-first-solution|z
+PROBE|H4-retract|[b z]
+PROBE|H5-retract-missing|[b z]
+PROBE|H6-assert-malformed|<error>
+PROBE|I1-mode-minus-ground|matched
+PROBE|I2-mode-minus-clash|nomatch
+PROBE|I3-mode-minus-unbound|matched
+PROBE|I4-mode-plus-unbound|matched
+PROBE|I5-bind|hello
+PROBE|I6-string-match|yes
+PROBE|I7-string-miss|no
+PROBE|I8-guard|[6 5 4]
+PROBE|I9-arith|144
+PROBE|I10-arith-big|9999800001
+PROBE|I11-multi-literal-query|3
+PROBE|I12-query-no-return|true
+PROBE|J1-prolog-memory|1000
+PROBE|J2-under-smallest-ceiling|done
+PROBE|J3-over-smallest-ceiling|<error>
+PROBES COMPLETE
