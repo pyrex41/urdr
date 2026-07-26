@@ -59,6 +59,15 @@ content):
   `canonical-profile/m1-large`.
 - UAP v1, the M0 conformance cases, and every other existing surface:
   `canonical-profile/m0`, unchanged.
+- Component-state encoding and validation (the ADR 0004 Decision 1
+  `component-step` boundary, including snapshot state digests):
+  `canonical-profile/m1-large`. Added by amendment after Wave C
+  measured an inline partition term at ~130 parsed nodes — a model
+  holding one policy term and one queued packet cannot be encoded under
+  `m0`. Wave C shipped within `m0` via named mask descriptors; the
+  larger profile removes the ceiling for M1 scenarios without changing
+  any existing output (all merged fixtures fit `m0`, and `m0`-valid
+  values are `m1-large`-valid unchanged).
 - Future surfaces must declare a profile in their owning ADR or plan
   wave; an undeclared surface defaults to `canonical-profile/m0`.
 
