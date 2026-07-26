@@ -75,3 +75,29 @@ X|property-class-unsupported|invalid/property-class-unsupported.frame|scenario-p
 X|property-class-type|invalid/property-class-type.frame|scenario-property-class-type
 X|duplicate-property|invalid/duplicate-property.frame|scenario-duplicate-property
 X|property-order|invalid/property-order.frame|scenario-property-order
+# ADR 0005 canonical-profile/m1-large boundary fixtures. scenario/v1 names
+# that profile statically; each frame below is a genuine scenario/v1 frame
+# whose boundary payload lives in one property's opaque spec value.
+# Two further kinds are used below:
+#   L|name|relative-frame-path                valid, checked exactly as V,
+#                                             reported by length and edge
+#                                             octets because its hex is
+#                                             too long to print
+#   M|name|relative-frame-path|stable-error   the frame replayed through
+#                                             the plain ADR 0002 m0
+#                                             canonical entry point, which
+#                                             must still reject it
+V|m1-nodes-beyond-m0|valid/m1-nodes-beyond-m0.frame
+L|m1-nodes-max|valid/m1-nodes-max.frame
+L|m1-frame-max|valid/m1-frame-max.frame
+V|m1-depth-max|valid/m1-depth-max.frame
+X|m1-nodes-too-many|invalid/m1-nodes-too-many.frame|nodes-too-many
+X|m1-frame-too-large|invalid/m1-frame-too-large.frame|frame-too-large
+X|m1-depth-too-large|invalid/m1-depth-too-large.frame|depth-too-large
+# ADR 0005 verification 3: the same accepted m1-large frames presented to
+# the plain ADR 0002 m0 canonical entry point still reject, fail-closed,
+# with the unchanged stable codes.
+M|m0-rejects-nodes-beyond-m0|valid/m1-nodes-beyond-m0.frame|nodes-too-many
+M|m0-rejects-nodes-max|valid/m1-nodes-max.frame|frame-too-large
+M|m0-rejects-frame-max|valid/m1-frame-max.frame|frame-too-large
+M|m0-rejects-depth-max|valid/m1-depth-max.frame|depth-too-large

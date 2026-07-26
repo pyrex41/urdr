@@ -2,7 +2,14 @@
 
 Semantic output lines, in fixture order, are:
 
+  profile|SURFACE|BOUNDS  ADR 0005 profile declaration under test
   accept|NAME|HEX      valid frame parsed and re-encoded to the same bytes
+  large|NAME|LEN|HEAD|TAIL
+                       valid frame too large to print in full: octet count
+                       plus the first and last sixteen octets in hex. The
+                       full-byte evidence for these frames is the in-band
+                       re-encode and reparse equality, which fails the case
+                       on any port that produces different bytes.
   reject|NAME|CODE     frame or in-memory value rejected with a stable code
   urdr-scenario: N/N passed
   ALL PASS
@@ -139,10 +146,73 @@ Any failure prints a FAIL| line and suppresses the marker. *\
     (urdr.scenario.test.fixture-fields
       (urdr.scenario.test.fields Line)))
 
+\* ADR 0005 additions.
+
+   L rows are valid frames whose hex is too long to print; they are
+   checked exactly as V rows and reported by length plus edge octets.
+   M rows replay a fixture through the plain ADR 0002 m0 canonical entry
+   point, which must still reject it (ADR 0005 verification 3). *\
+(define urdr.scenario.test.prefix
+  N Bs -> (urdr.scenario.test.prefix-of (urdr.canonical.take N Bs [])))
+
+(define urdr.scenario.test.prefix-of
+  [ok Taken Rest] -> Taken
+  [error E] -> [])
+
+(define urdr.scenario.test.suffix
+  N Bs ->
+    (urdr.canonical.rev
+      (urdr.scenario.test.prefix N (urdr.canonical.rev Bs))))
+
+(define urdr.scenario.test.large
+  Name Relative ->
+    (let Raw
+      (read-file-as-bytelist
+        (urdr.scenario.test.fixture-path Relative))
+      (urdr.scenario.test.large-parsed
+        Name Raw (urdr.scenario.parse-frame Raw))))
+
+(define urdr.scenario.test.large-parsed
+  Name Raw [error E] -> [error E]
+  Name Raw [ok Scenario] ->
+    (urdr.scenario.test.large-encoded
+      Name Raw Scenario (urdr.scenario.encode-frame Scenario)))
+
+(define urdr.scenario.test.large-encoded
+  Name Raw Scenario [error E] -> [error E]
+  Name Raw Scenario [ok Encoded] ->
+    (if (not (= Encoded Raw))
+        [error reencode]
+        (if (not (= (urdr.scenario.parse-frame Encoded) [ok Scenario]))
+            [error reparse]
+            (do
+              (output
+                "large|~A|~A|~A|~A~%"
+                (urdr.scenario.test.bytes-string Name)
+                (length Raw)
+                (urdr.scenario.test.bytes-string
+                  (urdr.scenario.test.hex
+                    (urdr.scenario.test.prefix 16 Raw)))
+                (urdr.scenario.test.bytes-string
+                  (urdr.scenario.test.hex
+                    (urdr.scenario.test.suffix 16 Raw))))
+              [ok]))))
+
+(define urdr.scenario.test.m0-reject
+  Name Relative ExpectedBytes ->
+    (let Raw
+      (read-file-as-bytelist
+        (urdr.scenario.test.fixture-path Relative))
+      (urdr.scenario.test.reject
+        Name ExpectedBytes (urdr.canonical.decode-frame Raw))))
+
 (define urdr.scenario.test.fixture-fields
   [[86] Name Relative] -> (urdr.scenario.test.valid Name Relative)
   [[88] Name Relative Expected] ->
     (urdr.scenario.test.invalid Name Relative Expected)
+  [[76] Name Relative] -> (urdr.scenario.test.large Name Relative)
+  [[77] Name Relative Expected] ->
+    (urdr.scenario.test.m0-reject Name Relative Expected)
   _ -> [error fixture-shape])
 
 (define urdr.scenario.test.fixtures
@@ -299,7 +369,54 @@ Any failure prints a FAIL| line and suppresses the marker. *\
                                 [error encode-guard]
                                 [ok]))))))))
 
+\* ADR 0005: the two profiles are pinned structurally here, and their
+   bounds are printed, so raising a limit or repointing a surface is a
+   visible cross-port semantic diff rather than a quiet capacity edit.
+   Only ASCII labels and exact integers are printed; the profile names
+   are compared as values and never rendered, so no host symbol-printer
+   behavior enters the semantic output. *\
+(define urdr.scenario.test.profile-line
+  Surface Profile ->
+    (do
+      (output
+        "profile|~A|~A|~A|~A|~A|~A|~A~%"
+        Surface
+        (urdr.canonical.profile-max-frame Profile)
+        (urdr.canonical.profile-max-atom Profile)
+        (urdr.canonical.profile-max-depth Profile)
+        (urdr.canonical.profile-max-nodes Profile)
+        (urdr.canonical.profile-max-integer-digits Profile)
+        (urdr.canonical.profile-max-symbol Profile))
+      [ok]))
+
+(define urdr.scenario.test.profiles
+  ->
+    (if (not (= (urdr.canonical.profile.m0)
+                [urdr.canonical.profile
+                  canonical-profile/m0 4096 256 32 256 255 64]))
+        [error m0-profile]
+        (if (not (= (urdr.canonical.profile.m1-large)
+                    [urdr.canonical.profile
+                      canonical-profile/m1-large
+                      65536 256 64 8192 255 64]))
+            [error m1-large-profile]
+            (if (not (= (urdr.scenario.profile)
+                        (urdr.canonical.profile.m1-large)))
+                [error scenario-profile]
+                (do
+                  (urdr.scenario.test.profile-line
+                    "m0-default" (urdr.canonical.profile.m0))
+                  (urdr.scenario.test.profile-line
+                    "scenario/v1" (urdr.scenario.profile)))))))
+
 (define urdr.scenario.test.run
+  CasesPath ->
+    (let Profiles (urdr.scenario.test.profiles)
+      (if (not (= Profiles [ok]))
+          (do (output "FAIL|profiles|~A~%" Profiles) false)
+          (urdr.scenario.test.run-accessors CasesPath))))
+
+(define urdr.scenario.test.run-accessors
   CasesPath ->
     (let Accessors (urdr.scenario.test.accessors)
       (if (not (= Accessors [ok]))
@@ -320,7 +437,7 @@ Any failure prints a FAIL| line and suppresses the marker. *\
   Count [error E] -> (do (output "FAIL|api|~A~%" E) false)
   Count [ok ApiCount] ->
     (let Total (+ Count ApiCount)
-      (if (= Total 82)
+      (if (= Total 93)
           (do
             (output "urdr-scenario: ~A/~A passed~%" Total Total)
             (output "ALL PASS~%")
