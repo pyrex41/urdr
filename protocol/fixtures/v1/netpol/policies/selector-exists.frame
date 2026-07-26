@@ -1,0 +1,1 @@
+358:(4:list(6:record(7:ingress(4:list(6:record(4:from(4:list(6:record(12:pod-selector(6:record(17:match-expressions(4:list(6:record(3:key(4:text4:role))(8:operator(6:symbol6:Exists)))))))))))))(4:name(4:text1:p))(9:namespace(4:text7:default))(12:pod-selector(6:record(12:match-labels(6:record(4:role(4:text2:db))))))(12:policy-types(4:list(6:symbol7:Ingress))))),
