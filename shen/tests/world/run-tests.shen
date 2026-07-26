@@ -11,6 +11,7 @@
 (uwt.quiet-load "shen/protocol/canonical.shen")
 (uwt.quiet-load "shen/world/integer.shen")
 (uwt.quiet-load "shen/world/prng.shen")
+(uwt.quiet-load "shen/world/component.shen")
 (uwt.quiet-load "shen/world/world.shen")
 
 (define uwt.nth
@@ -259,6 +260,351 @@
              [105 110 118 97 108 105 100 45 101 118 101 110 116])
            (= (urdr.world.reduction-world Reduction) Final))))
 
+\\ Modeled-component fixtures (ADR 0004 Decision 1). One well-behaved
+\\ component and one variant per banned authority, each of which must be
+\\ rejected fail-closed rather than repaired.
+
+(define uwt.counter-name
+  -> [99 111 117 110 116 101 114])
+
+(define uwt.counter-state
+  Count -> [record [[[99 111 117 110 116] Count]]])
+
+(define uwt.counter-input
+  -> [symbol [98 117 109 112]])
+
+(define uwt.counter-choice
+  -> [alternatives [100 101 108 97 121]
+       [[symbol [102 97 115 116]] [symbol [115 108 111 119]]]])
+
+\\ Well behaved: advances only its own state, names one fact, and offers
+\\ canonically ordered alternatives it does not select among.
+(define uwt.counter
+  [record [[[99 111 117 110 116] Count]]]
+  [record [[[105 110 112 117 116] [symbol [98 117 109 112]]] | _]] ->
+    (let Next (hd (tl (urdr.int.add Count (uwt.big 1))))
+      [step
+        (uwt.counter-state Next)
+        [[fact [116 105 99 107] (uwt.counter-state Next)]]
+        [(uwt.counter-choice)]])
+  _ _ ->
+    [error (urdr.canonical.string-bytes "counter-unknown-input")])
+
+\\ Misbehaving: emits a world event directly.
+(define uwt.emitter
+  State _ ->
+    [step
+      State
+      [[fact [101 109 105 116]
+         [record
+           [[[112 97 121 108 111 97 100] [null]]
+            [[116 121 112 101] [symbol [101 118 101 110 116]]]]]]]
+      []])
+
+\\ Misbehaving: allocates an event identifier.
+(define uwt.inventor
+  State _ ->
+    [step
+      State
+      [[fact [105 115 115 117 101]
+         [record [[[101 118 101 110 116 45 105 100] (uwt.big 41)]]]]]
+      []])
+
+\\ Misbehaving: returns a state that is not a canonical value.
+(define uwt.noncanonical
+  State _ -> [step [record [[[99 111 117 110 116] [oops]]]] [] []])
+
+\\ Misbehaving: raises instead of returning a result.
+(define uwt.raiser
+  State _ -> (simple-error "component fixture raised"))
+
+\\ Misbehaving: returns something that is not a step result.
+(define uwt.shapeless
+  State _ -> [stepped State])
+
+\\ Misbehaving: echoes the logical time it was given back as a fact, which
+\\ claims a time advance.
+(define uwt.ticker
+  State Event ->
+    [step State [[fact [116 105 99 107 101 100] Event]] []])
+
+\\ Misbehaving: offers alternatives out of canonical order.
+(define uwt.unordered
+  State _ ->
+    [step
+      State
+      []
+      [[alternatives [100 101 108 97 121]
+         [[symbol [115 108 111 119]] [symbol [102 97 115 116]]]]]])
+
+(define uwt.zero-state
+  -> (uwt.counter-state (urdr.int.zero)))
+
+(define uwt.emitter-name
+  -> [101 109 105 116 116 101 114])
+
+\\ Every fixture world registers the well-behaved counter plus exactly one
+\\ other component, so that a step can be shown to touch the stepped
+\\ component alone. Registry entries ascend strictly by name.
+(define uwt.pair-registry
+  Name Handler ->
+    [[component (uwt.counter-name)
+       (/. S E (uwt.counter S E)) (uwt.zero-state)]
+     [component Name Handler (uwt.zero-state)]])
+
+(define uwt.pair-world
+  Name Handler ->
+    (hd (tl (urdr.world.initial-with-components
+              (uwt.seed) (uwt.pair-registry Name Handler)))))
+
+(define uwt.emitter-world
+  -> (uwt.pair-world
+       (uwt.emitter-name) (/. S E (uwt.emitter S E))))
+
+(define uwt.component-inputs
+  Name Count ->
+    (append
+      (uwt.component-schedules Name Count)
+      (uwt.component-advances Count)))
+
+(define uwt.component-schedules
+  _ 0 -> []
+  Name N ->
+    [[schedule (urdr.int.zero) component
+       [component-input Name (uwt.counter-input)]] |
+     (uwt.component-schedules Name (- N 1))])
+
+(define uwt.component-advances
+  0 -> []
+  N -> [[advance-to-next-event] | (uwt.component-advances (- N 1))])
+
+(define uwt.component-replay
+  -> (urdr.world.replay
+       (uwt.emitter-world)
+       (uwt.component-inputs (uwt.counter-name) 2)))
+
+(define uwt.component-setup
+  -> [cfixture (uwt.component-replay)])
+
+(define uwt.creductions
+  [cfixture Replay] -> (urdr.world.replay-reductions Replay))
+
+(define uwt.cfinal
+  [cfixture Replay] -> (urdr.world.replay-world Replay))
+
+(define uwt.expected-fact
+  Id Count ->
+    [record
+      [[[99 111 109 112 111 110 101 110 116] [bytes (uwt.counter-name)]]
+       [[101 118 101 110 116 45 105 100] Id]
+       [[110 97 109 101] [symbol [116 105 99 107]]]
+       [[116 105 109 101] (urdr.int.zero)]
+       [[116 121 112 101] [symbol [102 97 99 116]]]
+       [[118 97 108 117 101] (uwt.counter-state Count)]]])
+
+(define uwt.expected-choice
+  Id ->
+    [record
+      [[[97 108 116 101 114 110 97 116 105 118 101 115]
+        [list [[symbol [102 97 115 116]] [symbol [115 108 111 119]]]]]
+       [[99 111 109 112 111 110 101 110 116] [bytes (uwt.counter-name)]]
+       [[101 118 101 110 116 45 105 100] Id]
+       [[112 117 114 112 111 115 101] [symbol [100 101 108 97 121]]]
+       [[116 105 109 101] (urdr.int.zero)]
+       [[116 121 112 101]
+        [symbol [99 111 109 112 111 110 101 110 116 45
+                 99 104 111 105 99 101]]]]])
+
+(define uwt.entry-state
+  [component _ _ State] -> State
+  _ -> none)
+
+(define uwt.component-state-of
+  Name World ->
+    (uwt.entry-state
+      (urdr.world.component-find Name (urdr.world.components World))))
+
+\\ The component that was not stepped keeps its initial state.
+(define uwt.other-untouched?
+  World ->
+    (= (uwt.component-state-of (uwt.emitter-name) World)
+       (uwt.zero-state)))
+
+(define uwt.component-run?
+  Fixture ->
+    (let Final (uwt.cfinal Fixture)
+         Reductions (uwt.creductions Fixture)
+      (and (= (urdr.world.facts Final)
+              [(uwt.expected-fact (uwt.big 0) (uwt.big 1))
+               (uwt.expected-fact (uwt.big 1) (uwt.big 2))])
+           (and (= (urdr.world.reduction-choices
+                     (uwt.nth 2 Reductions))
+                   [(uwt.expected-choice (uwt.big 0))])
+                (and (= (urdr.world.reduction-choices
+                          (uwt.nth 3 Reductions))
+                        [(uwt.expected-choice (uwt.big 1))])
+                     (and (= (uwt.component-state-of
+                               (uwt.counter-name) Final)
+                             (uwt.counter-state (uwt.big 2)))
+                          (uwt.other-untouched? Final)))))))
+
+\\ A component step is the component's own business: it may not move logical
+\\ time, allocate identifiers, touch PRNG streams, or record verdicts.
+(define uwt.component-isolation?
+  Fixture ->
+    (let Final (uwt.cfinal Fixture)
+      (and (= (urdr.world.time Final) (urdr.int.zero))
+           (and (= (urdr.world.next-event-id Final) (uwt.big 2))
+                (and (= (urdr.world.streams Final) [])
+                     (and (= (urdr.world.verdicts Final) [])
+                          (= (urdr.world.pending Final) [])))))))
+
+\\ Worlds carrying components are compared through their canonical snapshot,
+\\ never by host object equality: a component handler is code, and code has
+\\ no canonical identity (SPEC.md 7.1).
+(define uwt.component-replay-equality?
+  Fixture ->
+    (let Again (urdr.world.replay-world (uwt.component-replay))
+         Final (uwt.cfinal Fixture)
+      (and (= (urdr.world.snapshot-frame Final)
+              (urdr.world.snapshot-frame Again))
+           (and (= (urdr.world.facts Final) (urdr.world.facts Again))
+                (= (urdr.world.transcript Final)
+                   (uwt.component-inputs (uwt.counter-name) 2))))))
+
+(define uwt.fail-closed?
+  Name Handler Code Detail ->
+    (uwt.replay-error?
+      (urdr.world.replay
+        (uwt.pair-world Name Handler)
+        (uwt.component-inputs Name 1))
+      (urdr.canonical.string-bytes Code)
+      (urdr.world.component-detail Name Detail)))
+
+(define uwt.replay-error?
+  [replay-error _ _ Choices] Code Detail ->
+    (= Choices [error (urdr.world.error-value Code Detail)])
+  _ _ _ -> false)
+
+(define uwt.claim
+  Name -> [symbol (urdr.canonical.string-bytes Name)])
+
+\\ The four banned authorities of ADR 0004 Decision 1, one fixture each:
+\\ direct event emission, identifier allocation, an implied time advance,
+\\ and a non-canonical result. The reducer names the claimed authority.
+(define uwt.misbehaviour?
+  -> (and (uwt.fail-closed?
+            (uwt.emitter-name)
+            (/. S E (uwt.emitter S E))
+            "component-fact-authority"
+            (uwt.claim "event"))
+          (and (uwt.fail-closed?
+                 [105 110 118 101 110 116 111 114]
+                 (/. S E (uwt.inventor S E))
+                 "component-fact-authority"
+                 (uwt.claim "event-id"))
+               (and (uwt.fail-closed?
+                      [116 105 99 107 101 114]
+                      (/. S E (uwt.ticker S E))
+                      "component-fact-authority"
+                      (uwt.claim "time"))
+                    (uwt.fail-closed?
+                      [110 111 110 99 97 110 111 110 105 99 97 108]
+                      (/. S E (uwt.noncanonical S E))
+                      "component-state-invalid"
+                      [null])))))
+
+(define uwt.malformed?
+  -> (and (uwt.fail-closed?
+            [117 110 111 114 100 101 114 101 100]
+            (/. S E (uwt.unordered S E))
+            "component-alternative-order"
+            [null])
+          (and (uwt.fail-closed?
+                 [115 104 97 112 101 108 101 115 115]
+                 (/. S E (uwt.shapeless S E))
+                 "component-result-shape"
+                 [null])
+               (uwt.fail-closed?
+                 [114 97 105 115 101 114]
+                 (/. S E (uwt.raiser S E))
+                 "component-step-failed"
+                 [null]))))
+
+\\ A component that cannot interpret its input returns a canonical error,
+\\ and the reducer converts it to a fail-closed run error unchanged.
+(define uwt.component-own-error?
+  -> (uwt.replay-error?
+       (urdr.world.replay
+         (uwt.emitter-world)
+         [[schedule (urdr.int.zero) component
+            [component-input (uwt.counter-name)
+              [symbol [98 111 103 117 115]]]]
+          [advance-to-next-event]])
+       (urdr.canonical.string-bytes "counter-unknown-input")
+       (urdr.world.component-detail (uwt.counter-name) [null])))
+
+(define uwt.component-unknown?
+  -> (uwt.replay-error?
+       (urdr.world.replay
+         (uwt.emitter-world)
+         (uwt.component-inputs [109 105 115 115 105 110 103] 1))
+       (urdr.canonical.string-bytes "component-unknown")
+       (urdr.world.component-detail
+         [109 105 115 115 105 110 103] [null])))
+
+\\ A component name that usurps a reserved authority is refused before the
+\\ event is ever scheduled.
+(define uwt.component-input-rejected?
+  -> (let W0 (uwt.emitter-world)
+          Reduction (urdr.world.reduce
+                      W0
+                      [schedule (urdr.int.zero) component
+                        [component-input [116 105 109 101]
+                          (uwt.counter-input)]])
+       (and (uwt.error?
+              Reduction
+              [105 110 118 97 108 105 100 45 101 118 101 110 116])
+            (= (urdr.world.snapshot-frame
+                 (urdr.world.reduction-world Reduction))
+               (urdr.world.snapshot-frame W0)))))
+
+(define uwt.duplicate-registry
+  -> [[component (uwt.counter-name)
+        (/. S E (uwt.counter S E)) (uwt.zero-state)]
+      [component (uwt.counter-name)
+        (/. S E (uwt.counter S E)) (uwt.zero-state)]])
+
+(define uwt.bad-state-registry
+  -> [[component (uwt.counter-name)
+        (/. S E (uwt.counter S E)) [oops]]])
+
+(define uwt.registry-rejected?
+  -> (and (= (urdr.world.initial-with-components
+               (uwt.seed) (uwt.duplicate-registry))
+             [error (urdr.canonical.string-bytes
+                      "component-registry-order")
+                    [symbol (uwt.counter-name)]])
+          (= (urdr.world.initial-with-components
+               (uwt.seed) (uwt.bad-state-registry))
+             [error (urdr.canonical.string-bytes
+                      "component-state-invalid")
+                    [null]])))
+
+(define uwt.component-trace-value
+  Fixture ->
+    (let Reductions (uwt.creductions Fixture)
+      [record
+        [[[99 104 111 105 99 101 115]
+          [list
+            (append
+              (urdr.world.reduction-choices (uwt.nth 2 Reductions))
+              (urdr.world.reduction-choices (uwt.nth 3 Reductions)))]]
+         [[102 97 99 116 115]
+          [list (urdr.world.facts (uwt.cfinal Fixture))]]
+         [[119 111 114 108 100]
+          (urdr.world.snapshot-value (uwt.cfinal Fixture))]]]))
+
 (define uwt.trace-value
   Fixture ->
     (let Reductions (uwt.reductions Fixture)
@@ -274,24 +620,27 @@
           (urdr.world.snapshot-value (uwt.final Fixture))]]]))
 
 (define uwt.finish
-  Checks [ok Bytes] ->
+  Checks [ok Bytes] [ok ComponentBytes] ->
     (if (uwt.all? Checks)
         (let Hex (hd (tl (urdr.bytes.hex Bytes)))
+             ComponentHex (hd (tl (urdr.bytes.hex ComponentBytes)))
           (do
             (output "WORLD-TRACE ~A~%" Hex)
-            (output "WORLD TESTS: 11/11 PASS~%")
+            (output "WORLD-COMPONENT-TRACE ~A~%" ComponentHex)
+            (output "WORLD TESTS: 21/21 PASS~%")
             (output "ALL PASS~%")
             true))
         (do
           (output "WORLD TESTS: FAIL~%")
           false))
-  _ [error _] ->
+  _ _ _ ->
     (do
       (output "WORLD TRACE: ENCODE FAIL~%")
       false))
 
 (define uwt.run
   -> (let Fixture (uwt.setup)
+          Components (uwt.component-setup)
        (let Checks
          [(= (length (uwt.reductions Fixture)) 12)
           (uwt.scheduling? Fixture)
@@ -304,10 +653,22 @@
           (uwt.replay-equality? Fixture)
           (uwt.invalid-time? Fixture)
           (and (uwt.stale-and-rollback? Fixture)
-               (uwt.invalid-event? Fixture))]
+               (uwt.invalid-event? Fixture))
+          (= (length (uwt.creductions Components)) 4)
+          (uwt.component-run? Components)
+          (uwt.component-isolation? Components)
+          (uwt.component-replay-equality? Components)
+          (uwt.misbehaviour?)
+          (uwt.malformed?)
+          (uwt.component-own-error?)
+          (uwt.component-unknown?)
+          (uwt.component-input-rejected?)
+          (uwt.registry-rejected?)]
          (uwt.finish
            Checks
            (urdr.canonical.encode-frame
-             (uwt.trace-value Fixture))))))
+             (uwt.trace-value Fixture))
+           (urdr.canonical.encode-frame
+             (uwt.component-trace-value Components))))))
 
 (uwt.run)

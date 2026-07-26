@@ -1,5 +1,6 @@
 \\ Pure immutable world nucleus.
-\\ Requires canonical.shen and prng.shen to be loaded by the caller.
+\\ Requires canonical.shen, prng.shen, and component.shen to be loaded by
+\\ the caller.
 
 (define urdr.world.initial
   Seed -> [world/v1
@@ -9,35 +10,63 @@
            Seed
            []
            []
+           []
+           []
            []])
 
+\\ Boot a world with a modeled-component registry (ADR 0004 Decision 1).
+\\ Registry entries are [component NAME HANDLER STATE]; an invalid registry
+\\ is refused here rather than repaired at the first dispatch.
+(define urdr.world.initial-with-components
+  Seed Registry ->
+    (let Valid (urdr.component.registry-valid? Registry)
+      (if (= (hd Valid) error)
+          Valid
+          [ok [world/v1
+                (urdr.int.zero)
+                (urdr.int.zero)
+                []
+                Seed
+                []
+                []
+                []
+                Registry
+                []]])))
+
 (define urdr.world.valid?
-  [world/v1 Time NextId _ Seed _ _ _] ->
+  [world/v1 Time NextId _ Seed _ _ _ Components _] ->
     (and (= (hd (urdr.time.check Time)) ok)
          (and (= (hd (urdr.time.check NextId)) ok)
-              (= (hd (urdr.prng.octets.check Seed)) ok)))
+              (and (= (hd (urdr.prng.octets.check Seed)) ok)
+                   (urdr.component.registry-shape? Components))))
   _ -> false)
 
 (define urdr.world.time
-  [world/v1 Time _ _ _ _ _ _] -> Time)
+  [world/v1 Time _ _ _ _ _ _ _ _] -> Time)
 
 (define urdr.world.next-event-id
-  [world/v1 _ NextId _ _ _ _ _] -> NextId)
+  [world/v1 _ NextId _ _ _ _ _ _ _] -> NextId)
 
 (define urdr.world.pending
-  [world/v1 _ _ Pending _ _ _ _] -> Pending)
+  [world/v1 _ _ Pending _ _ _ _ _ _] -> Pending)
 
 (define urdr.world.seed
-  [world/v1 _ _ _ Seed _ _ _] -> Seed)
+  [world/v1 _ _ _ Seed _ _ _ _ _] -> Seed)
 
 (define urdr.world.streams
-  [world/v1 _ _ _ _ Streams _ _] -> Streams)
+  [world/v1 _ _ _ _ Streams _ _ _ _] -> Streams)
 
 (define urdr.world.transcript
-  [world/v1 _ _ _ _ _ Transcript _] -> Transcript)
+  [world/v1 _ _ _ _ _ Transcript _ _ _] -> Transcript)
 
 (define urdr.world.verdicts
-  [world/v1 _ _ _ _ _ _ Verdicts] -> Verdicts)
+  [world/v1 _ _ _ _ _ _ Verdicts _ _] -> Verdicts)
+
+(define urdr.world.components
+  [world/v1 _ _ _ _ _ _ _ Components _] -> Components)
+
+(define urdr.world.facts
+  [world/v1 _ _ _ _ _ _ _ _ Facts] -> Facts)
 
 (define urdr.world.reduction-world
   [reduction World _ _] -> World)
@@ -98,6 +127,9 @@
          (and (urdr.world.canonical-list-valid? Alternatives)
               (urdr.world.choice-path-valid?
                 Seed Subsystem Actor Purpose)))
+  Seed component [component-input Name Value] ->
+    (and (urdr.component.name-valid? Name)
+         (urdr.world.canonical-valid? Value))
   _ _ _ -> false)
 
 (define urdr.world.event-before?
@@ -143,20 +175,24 @@
       [null]))
 
 (define urdr.world.schedule
-  [world/v1 Time NextId Pending Seed Streams Transcript Verdicts]
+  [world/v1
+    Time NextId Pending Seed Streams Transcript Verdicts
+    Components Facts]
   At Kind Payload ->
     (let ValidTime (urdr.time.check At)
       (if (= (hd ValidTime) error)
           (urdr.world.error
             [world/v1
-              Time NextId Pending Seed Streams Transcript Verdicts]
+              Time NextId Pending Seed Streams Transcript Verdicts
+              Components Facts]
             [105 110 118 97 108 105 100 45 116 105 109 101]
             [null])
           (let Order (hd (tl (urdr.time.compare At Time)))
             (if (< Order 0)
                 (urdr.world.error
                   [world/v1
-                    Time NextId Pending Seed Streams Transcript Verdicts]
+                    Time NextId Pending Seed Streams Transcript Verdicts
+                    Components Facts]
                   [115 116 97 108 101 45 101 118 101 110 116]
                   [null])
                 (if (not (urdr.world.event-valid?
@@ -164,7 +200,7 @@
                     (urdr.world.error
                       [world/v1
                         Time NextId Pending Seed Streams
-                        Transcript Verdicts]
+                        Transcript Verdicts Components Facts]
                       [105 110 118 97 108 105 100 45 101 118 101 110 116]
                       [null])
                     (let Event [event NextId At Kind Payload]
@@ -179,24 +215,30 @@
                           Seed
                           Streams
                           (append Transcript [Input])
-                          Verdicts]
+                          Verdicts
+                          Components
+                          Facts]
                         []
                         []])))))))
 
 (define urdr.world.advance
-  [world/v1 Time NextId [] Seed Streams Transcript Verdicts] ->
+  [world/v1
+    Time NextId [] Seed Streams Transcript Verdicts
+    Components Facts] ->
     (urdr.world.error
-      [world/v1 Time NextId [] Seed Streams Transcript Verdicts]
+      [world/v1
+        Time NextId [] Seed Streams Transcript Verdicts
+        Components Facts]
       [110 111 45 112 101 110 100 105 110 103 45 101 118 101 110 116]
       [null])
   [world/v1
     Time NextId [[event Id At Kind Payload] | Rest]
-    Seed Streams Transcript Verdicts] ->
+    Seed Streams Transcript Verdicts Components Facts] ->
     (let Advanced
       [world/v1
         At NextId Rest Seed Streams
         (append Transcript [[advance-to-next-event]])
-        Verdicts]
+        Verdicts Components Facts]
       (urdr.world.dispatch Advanced Id At Kind Payload)))
 
 (define urdr.world.command-value
@@ -228,13 +270,16 @@
 (define urdr.world.dispatch
   World Id At command Payload ->
     [reduction World [(urdr.world.command-value Id At Payload)] []]
-  [world/v1 Time NextId Pending Seed Streams Transcript Verdicts]
+  [world/v1
+    Time NextId Pending Seed Streams Transcript Verdicts
+    Components Facts]
   Id At property-equals [property PropertyId Actual Expected] ->
     (let Equal (urdr.world.canonical-equal Actual Expected)
       (if (= (hd Equal) error)
           (urdr.world.error
             [world/v1
-              Time NextId Pending Seed Streams Transcript Verdicts]
+              Time NextId Pending Seed Streams Transcript Verdicts
+              Components Facts]
             [105 110 118 97 108 105 100 45 99 97 110 111 110 105 99
              97 108 45 118 97 108 117 101]
             [null])
@@ -247,19 +292,133 @@
               [world/v1
                 Time NextId Pending Seed Streams Transcript
                 (append Verdicts
-                  [[verdict PropertyId Result Id At]])]
+                  [[verdict PropertyId Result Id At]])
+                Components Facts]
               []
               []])))
   World Id At choice
   [choice Subsystem Actor Purpose Alternatives] ->
     (urdr.world.choose
       World Id At Subsystem Actor Purpose Alternatives)
+  World Id At component [component-input Name Value] ->
+    (urdr.world.component-step World Id At Name Value)
   World _ _ _ _ ->
     (urdr.world.error
       World
       [105 110 118 97 108 105 100 45 112 101 110 100 105 110 103
        45 101 118 101 110 116]
       [null]))
+
+\\ Modeled-component dispatch (ADR 0004 Decision 1). The reducer supplies
+\\ the component with logical time and the scheduled input, invokes it, and
+\\ folds the validated result into the reduction: state back into the
+\\ registry, facts into world state, offered alternatives into the
+\\ reduction's choices. Every rejection is a fail-closed run error.
+(define urdr.world.component-find
+  _ [] -> none
+  Name [[component Name Handler State] | _] ->
+    [component Name Handler State]
+  Name [_ | Rest] -> (urdr.world.component-find Name Rest))
+
+(define urdr.world.component-put
+  [component Name Handler State] [] ->
+    [[component Name Handler State]]
+  [component Name Handler State] [[component Name _ _] | Rest] ->
+    [[component Name Handler State] | Rest]
+  Entry [Head | Rest] ->
+    [Head | (urdr.world.component-put Entry Rest)])
+
+\\ The component reads logical time; it may never assert one back.
+(define urdr.world.component-event
+  At Value ->
+    [record
+      [[[105 110 112 117 116] Value]
+       [[116 105 109 101] At]
+       [[116 121 112 101]
+        [symbol [99 111 109 112 111 110 101 110 116 45
+                 101 118 101 110 116]]]]])
+
+(define urdr.world.component-detail
+  Name Detail ->
+    [record
+      [[[99 111 109 112 111 110 101 110 116] [bytes Name]]
+       [[100 101 116 97 105 108] Detail]]])
+
+(define urdr.world.fact-value
+  Id At Name [fact FactName Value] ->
+    [record
+      [[[99 111 109 112 111 110 101 110 116] [bytes Name]]
+       [[101 118 101 110 116 45 105 100] Id]
+       [[110 97 109 101] [symbol FactName]]
+       [[116 105 109 101] At]
+       [[116 121 112 101] [symbol [102 97 99 116]]]
+       [[118 97 108 117 101] Value]]])
+
+(define urdr.world.fact-values
+  _ _ _ [] -> []
+  Id At Name [Fact | Rest] ->
+    [(urdr.world.fact-value Id At Name Fact) |
+     (urdr.world.fact-values Id At Name Rest)])
+
+(define urdr.world.component-choice-value
+  Id At Name [alternatives Purpose Alternatives] ->
+    [record
+      [[[97 108 116 101 114 110 97 116 105 118 101 115]
+        [list Alternatives]]
+       [[99 111 109 112 111 110 101 110 116] [bytes Name]]
+       [[101 118 101 110 116 45 105 100] Id]
+       [[112 117 114 112 111 115 101] [symbol Purpose]]
+       [[116 105 109 101] At]
+       [[116 121 112 101]
+        [symbol [99 111 109 112 111 110 101 110 116 45
+                 99 104 111 105 99 101]]]]])
+
+(define urdr.world.component-choice-values
+  _ _ _ [] -> []
+  Id At Name [Choice | Rest] ->
+    [(urdr.world.component-choice-value Id At Name Choice) |
+     (urdr.world.component-choice-values Id At Name Rest)])
+
+(define urdr.world.component-step
+  World Id At Name Value ->
+    (urdr.world.component-entry
+      World Id At Name Value
+      (urdr.world.component-find Name (urdr.world.components World))))
+
+(define urdr.world.component-entry
+  World Id At Name Value none ->
+    (urdr.world.error
+      World
+      (urdr.component.code "component-unknown")
+      (urdr.world.component-detail Name [null]))
+  World Id At Name Value [component _ Handler State] ->
+    (urdr.world.component-result
+      World Id At Name Handler
+      (urdr.component.step
+        Handler State (urdr.world.component-event At Value))))
+
+(define urdr.world.component-result
+  World Id At Name Handler [error Code Detail] ->
+    (urdr.world.error
+      World Code (urdr.world.component-detail Name Detail))
+  World Id At Name Handler [ok [step State Facts Choices]] ->
+    (urdr.world.component-commit
+      World Id At Name Handler State Facts Choices))
+
+(define urdr.world.component-commit
+  [world/v1
+    Time NextId Pending Seed Streams Transcript Verdicts
+    Components Facts]
+  Id At Name Handler State NewFacts Choices ->
+    [reduction
+      [world/v1
+        Time NextId Pending Seed Streams Transcript Verdicts
+        (urdr.world.component-put
+          [component Name Handler State] Components)
+        (append Facts
+          (urdr.world.fact-values Id At Name NewFacts))]
+      []
+      (urdr.world.component-choice-values Id At Name Choices)])
 
 (define urdr.world.path-compare
   [path SubA ActorA PurposeA _] [path SubB ActorB PurposeB _] ->
@@ -304,7 +463,9 @@
       Rest (urdr.int.raw.subtract Index (urdr.int.one))))
 
 (define urdr.world.choose
-  [world/v1 Time NextId Pending Seed Streams Transcript Verdicts]
+  [world/v1
+    Time NextId Pending Seed Streams Transcript Verdicts
+    Components Facts]
   Id At Subsystem Actor Purpose Alternatives ->
     (let Path [path Subsystem Actor Purpose (urdr.int.zero)]
          Counter (urdr.world.path-counter Path Streams)
@@ -314,13 +475,15 @@
       (if (= (hd Stream) error)
           (urdr.world.error
             [world/v1
-              Time NextId Pending Seed Streams Transcript Verdicts]
+              Time NextId Pending Seed Streams Transcript Verdicts
+              Components Facts]
             [105 110 118 97 108 105 100 45 112 114 110 103 45 112
              97 116 104]
             [null])
           (urdr.world.choose-sample
             [world/v1
-              Time NextId Pending Seed Streams Transcript Verdicts]
+              Time NextId Pending Seed Streams Transcript Verdicts
+              Components Facts]
             Id At Subsystem Actor Purpose Alternatives
             (urdr.prng.sample (hd (tl Stream)) Bound)))))
 
@@ -331,7 +494,9 @@
       [112 114 110 103 45 115 97 109 112 108 101 45 102 97 105
        108 101 100]
       [null])
-  [world/v1 Time NextId Pending Seed Streams Transcript Verdicts]
+  [world/v1
+    Time NextId Pending Seed Streams Transcript Verdicts
+    Components Facts]
   Id At Subsystem Actor Purpose Alternatives
   [ok [sample Index
         [stream _ _ _ _ _ NextCounter]
@@ -342,7 +507,8 @@
                        Streams)
       [reduction
         [world/v1
-          Time NextId Pending Seed NextStreams Transcript Verdicts]
+          Time NextId Pending Seed NextStreams Transcript Verdicts
+          Components Facts]
         []
         [(urdr.world.choice-value
            Id At Alternatives Selected Coordinates)]]))
@@ -403,10 +569,41 @@
     [(urdr.world.verdict-value Verdict) |
      (urdr.world.verdict-values Rest)])
 
-(define urdr.world.snapshot-value
-  [world/v1 Time NextId Pending Seed Streams Transcript Verdicts] ->
+\\ Component state is world state: the snapshot binds each registered
+\\ component name to a SHA-256 digest of its canonically encoded state, so a
+\\ component transition can never be invisible to a snapshot comparison
+\\ while staying inside the canonical frame budget.
+(define urdr.world.state-digest-value
+  State ->
+    (let Encoded (urdr.canonical.encode-payload State)
+      (if (= (hd Encoded) error)
+          [symbol [105 110 118 97 108 105 100 45
+                   115 116 97 116 101]]
+          [bytes (hd (tl (urdr.sha256 (hd (tl Encoded)))))])))
+
+(define urdr.world.component-value
+  Name State ->
     [record
-      [[[110 101 120 116 45 101 118 101 110 116 45 105 100] NextId]
+      [[[110 97 109 101] [bytes Name]]
+       [[115 116 97 116 101 45 100 105 103 101 115 116]
+        (urdr.world.state-digest-value State)]]])
+
+(define urdr.world.component-values
+  [] -> []
+  [[component Name _ State] | Rest] ->
+    [(urdr.world.component-value Name State) |
+     (urdr.world.component-values Rest)])
+
+(define urdr.world.snapshot-value
+  [world/v1
+    Time NextId Pending Seed Streams Transcript Verdicts
+    Components Facts] ->
+    [record
+      [[[99 111 109 112 111 110 101 110 116 115]
+        [list (urdr.world.component-values Components)]]
+       [[102 97 99 116 45 99 111 117 110 116]
+        (urdr.world.list-count Facts)]
+       [[110 101 120 116 45 101 118 101 110 116 45 105 100] NextId]
        [[112 101 110 100 105 110 103 45 101 118 101 110 116 45
          105 100 115]
         [list (urdr.world.pending-ids Pending)]]
@@ -422,7 +619,10 @@
 
 (define urdr.world.snapshot-frame
   World ->
-    (if (urdr.world.valid? World)
+    (if (and (urdr.world.valid? World)
+             (= (hd (urdr.component.registry-valid?
+                      (urdr.world.components World)))
+                ok))
         (urdr.canonical.encode-frame
           (urdr.world.snapshot-value World))
         [error invalid-world]))
