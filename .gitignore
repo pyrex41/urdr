@@ -34,3 +34,6 @@ tmp/
 artifacts/
 *.log
 *.pid
+
+# Claude Code session worktrees
+.claude/
