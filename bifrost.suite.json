@@ -45,6 +45,76 @@
       "raw_golden_path": "shen/tests/world/golden.txt",
       "raw_golden_sha256": "9f8b8127c76c817b4d555abc786c7a97ff28d6e36ca819b62ebef1b2f20dccf3",
       "doc": "World reduction, event ordering, replay, named streams, and trace"
+    },
+    {
+      "name": "scenario-parse",
+      "mode": "script",
+      "program": "shen/tests/scenario/run-tests.shen",
+      "program_sha256": "3adfcf47bebf534ef3780b94d12f2fb4af1cc8f1582ba20f79fb2f582cbfe061",
+      "expect": "marker",
+      "marker": "ALL PASS",
+      "heavy": true,
+      "fixture_manifest": "protocol/fixtures/v1/scenario/SHA256SUMS",
+      "fixture_manifest_sha256": "502e576ddbfc9f86ee8cf17723b9bf0d9fe5a692bc3607efca3520ade9cdc0ca",
+      "raw_golden_path": null,
+      "raw_golden_sha256": "fdea628a7c6b610864615386679d5898f88333aee13186089325042de4d350e6",
+      "doc": "Scenario DSL parse, validation, profiles, and fixture rejection"
+    },
+    {
+      "name": "netkat-core",
+      "mode": "script",
+      "program": "shen/tests/netkat/run-tests.shen",
+      "program_sha256": "eb923a317dbe739391c4b9a5c50ab7c95f670f6f369f354664c6b36aff2d4bdb",
+      "expect": "marker",
+      "marker": "ALL PASS",
+      "heavy": true,
+      "fixture_manifest": "protocol/fixtures/v1/netkat/SHA256SUMS",
+      "fixture_manifest_sha256": "f1f86afbfa9fac96c4439fd76fd97c901ebf7cd4e4cce48b8f6c2d3c3fcaaeaa",
+      "raw_golden_path": "shen/tests/netkat/golden.txt",
+      "raw_golden_sha256": "df30b741e25d54aef93e19868bff3fbf74bcc397df213de4e74fa4fd591d817e",
+      "doc": "NetKAT terms, denotation, decision procedures, and mutations"
+    },
+    {
+      "name": "netpol-compile",
+      "mode": "script",
+      "program": "shen/tests/netpol/run-tests.shen",
+      "program_sha256": "eae5991f293ea419b8ebc793b0ed7c8f39ee3e6c2dbc17d44c90acd5652e8b4c",
+      "expect": "marker",
+      "marker": "ALL PASS",
+      "heavy": true,
+      "fixture_manifest": "protocol/fixtures/v1/netpol/SHA256SUMS",
+      "fixture_manifest_sha256": "d9a0a2ed6c0466b599204fce1464a7403e896e0c0a57817a727391639f05e3e3",
+      "raw_golden_path": "shen/tests/netpol/golden.txt",
+      "raw_golden_sha256": "09b0be2f36e0175c592458d0ca9c5ebbb02f8077e7f1847ecf8f00bad5e8f6a1",
+      "doc": "NetworkPolicy compilation, admission verdicts, and rejections"
+    },
+    {
+      "name": "models-conformance",
+      "mode": "script",
+      "program": "shen/tests/models/run-tests.shen",
+      "program_sha256": "5da75c02e02fe8b84a6d0fcaf99b30dab5a55b9227f8ee4ecb82a0df744ea4eb",
+      "expect": "marker",
+      "marker": "ALL PASS",
+      "heavy": true,
+      "fixture_manifest": null,
+      "fixture_manifest_sha256": null,
+      "raw_golden_path": "shen/tests/models/golden.txt",
+      "raw_golden_sha256": "f3f7ae5b47c8eb26ae71ec21ba5eaafe43b800be6025f98b0f65231f08d56f9b",
+      "doc": "Net, timer, and fault components plus the NetKAT witness bridge"
+    },
+    {
+      "name": "property-verdicts",
+      "mode": "script",
+      "program": "shen/tests/properties/run-tests.shen",
+      "program_sha256": "28526116736059d2c9cc10d5fa683427de167c9c1910775e01ace2ebf32a2999",
+      "expect": "marker",
+      "marker": "ALL PASS",
+      "heavy": true,
+      "fixture_manifest": null,
+      "fixture_manifest_sha256": null,
+      "raw_golden_path": "shen/tests/properties/golden.txt",
+      "raw_golden_sha256": "153b6b11171f0440924c88f4a7eb7119996578a0a7b47054a89e5b077f928479",
+      "doc": "Property schemas, finite-trace verdicts, and boundary cases"
     }
   ]
 }
