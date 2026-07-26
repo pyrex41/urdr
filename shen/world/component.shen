@@ -41,10 +41,13 @@
   Name -> (urdr.component.member? Name (urdr.component.reserved)))
 
 (define urdr.component.canonical?
-  Value -> (= (hd (urdr.canonical.encode-payload Value)) ok))
+  Value -> (= (hd (urdr.canonical.encode-payload-with-profile
+                    (urdr.canonical.profile.m1-large) Value))
+              ok))
 
 (define urdr.component.encoding
-  Value -> (hd (tl (urdr.canonical.encode-payload Value))))
+  Value -> (hd (tl (urdr.canonical.encode-payload-with-profile
+                     (urdr.canonical.profile.m1-large) Value))))
 
 \\ A component name, fact name, or choice purpose is a canonical symbol that
 \\ does not usurp a reserved authority.
