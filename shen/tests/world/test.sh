@@ -19,7 +19,8 @@ run_port() {
   trap 'rm -f "$output" "$semantic" "$CACHE"' EXIT HUP INT TERM
 
   if "$@" >"$output" &&
-     /usr/bin/grep -E '^(WORLD-TRACE |WORLD TESTS: |ALL PASS$)' \
+     /usr/bin/grep -E \
+       '^(WORLD-TRACE |WORLD-COMPONENT-TRACE |WORLD TESTS: |ALL PASS$)' \
        "$output" >"$semantic" &&
      /usr/bin/cmp -s "$GOLDEN" "$semantic"; then
     printf '%s: PASS exact-golden\n' "$name"
