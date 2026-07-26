@@ -140,6 +140,21 @@ under a hard admissibility gate:
   canonical model terms and produce canonical results. They never mutate
   world state, draw randomness, or advance time.
 
+**Spike outcome (2026-07-25, `spikes/m1-prolog-portability/`, merged in
+PR #12):** the gate FAILED. Of 112 byte-compared probes across the four
+pinned ports, 10 diverged in three independent classes (`call/1` raises on
+shen-lua only; `var?/1` crashes shen-lua's engine; `shen.*prolog-memory*`
+query capacity differs four ways: 1000/1000/10000/ignored). Root cause:
+shen-lua ships an independent native Lua Prolog reimplementation, enabled
+by default, so agreement on the remaining 102 probes is coincidental
+rather than kernel-constrained. Per this decision's own terms the fallback
+was taken: `shen/properties/query.shen` provides the query surface in
+plain Shen (24-probe self-check byte-identical on all four ports), all
+Prolog output remains `analysis`-only, and no Prolog fixture suite exists.
+This finding is also new information about the language oracle itself
+(SPEC §7.2): per-port native subsystem reimplementations can coincide with
+kernel behavior without being constrained by it.
+
 ### 4. Kubernetes NetworkPolicy compiler in M1
 
 A compiler from Kubernetes NetworkPolicy manifests (`networking.k8s.io/v1`,
