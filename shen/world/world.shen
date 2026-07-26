@@ -575,7 +575,8 @@
 \\ while staying inside the canonical frame budget.
 (define urdr.world.state-digest-value
   State ->
-    (let Encoded (urdr.canonical.encode-payload State)
+    (let Encoded (urdr.canonical.encode-payload-with-profile
+                   (urdr.canonical.profile.m1-large) State)
       (if (= (hd Encoded) error)
           [symbol [105 110 118 97 108 105 100 45
                    115 116 97 116 101]]
