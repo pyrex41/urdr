@@ -178,25 +178,45 @@ Any failure prints a FAIL| line and suppresses the marker. *\
     (urdr.scenario.test.large-encoded
       Name Raw Scenario (urdr.scenario.encode-frame Scenario)))
 
+\* Large frames are compared with urdr.canonical.bytes-compare rather
+   than `=`: the kernel equality of two distinct lists this long
+   overflows the shen-lua stack, while bytes-compare is a tail
+   recursion. Structural identity of the two parsed scenarios is not
+   asserted directly for the same reason; it follows from both round
+   trips re-encoding to exactly the fixture octets, because encoding a
+   validated scenario is a deterministic total function of its
+   structure. *\
 (define urdr.scenario.test.large-encoded
   Name Raw Scenario [error E] -> [error E]
   Name Raw Scenario [ok Encoded] ->
-    (if (not (= Encoded Raw))
+    (if (not (= (urdr.canonical.bytes-compare Encoded Raw) eq))
         [error reencode]
-        (if (not (= (urdr.scenario.parse-frame Encoded) [ok Scenario]))
-            [error reparse]
-            (do
-              (output
-                "large|~A|~A|~A|~A~%"
-                (urdr.scenario.test.bytes-string Name)
-                (length Raw)
-                (urdr.scenario.test.bytes-string
-                  (urdr.scenario.test.hex
-                    (urdr.scenario.test.prefix 16 Raw)))
-                (urdr.scenario.test.bytes-string
-                  (urdr.scenario.test.hex
-                    (urdr.scenario.test.suffix 16 Raw))))
-              [ok]))))
+        (urdr.scenario.test.large-reparsed
+          Name Raw (urdr.scenario.parse-frame Encoded))))
+
+(define urdr.scenario.test.large-reparsed
+  Name Raw [error E] -> [error E]
+  Name Raw [ok Scenario] ->
+    (urdr.scenario.test.large-reencoded
+      Name Raw (urdr.scenario.encode-frame Scenario)))
+
+(define urdr.scenario.test.large-reencoded
+  Name Raw [error E] -> [error E]
+  Name Raw [ok Encoded] ->
+    (if (not (= (urdr.canonical.bytes-compare Encoded Raw) eq))
+        [error reparse]
+        (do
+          (output
+            "large|~A|~A|~A|~A~%"
+            (urdr.scenario.test.bytes-string Name)
+            (length Raw)
+            (urdr.scenario.test.bytes-string
+              (urdr.scenario.test.hex
+                (urdr.scenario.test.prefix 16 Raw)))
+            (urdr.scenario.test.bytes-string
+              (urdr.scenario.test.hex
+                (urdr.scenario.test.suffix 16 Raw))))
+          [ok])))
 
 (define urdr.scenario.test.m0-reject
   Name Relative ExpectedBytes ->
@@ -389,7 +409,43 @@ Any failure prints a FAIL| line and suppresses the marker. *\
         (urdr.canonical.profile-max-symbol Profile))
       [ok]))
 
+\* A value that is not a profile must be refused before it can reach a
+   limit check, on every profile-taking entry point. Without the guard
+   each of these would answer something else entirely (an empty frame,
+   for instance, is frame-truncated), so the assertion is a real
+   mutation test of the fail-closed path. *\
+(define urdr.scenario.test.guard-results
+  -> [(urdr.canonical.parse-payload-with-profile [not-a-profile] [])
+      (urdr.canonical.decode-payload-with-profile [not-a-profile] [])
+      (urdr.canonical.decode-frame-with-profile [not-a-profile] [])
+      (urdr.canonical.encode-payload-with-profile [not-a-profile] [null])
+      (urdr.canonical.encode-frame-with-profile [not-a-profile] [null])
+      (urdr.canonical.atom-with-profile [not-a-profile] [])
+      (urdr.canonical.int-parse-with-profile [not-a-profile] [48])
+      (urdr.canonical.int-render-with-profile [not-a-profile] [big 0 []])
+      (urdr.canonical.stream-feed-with-profile
+        [not-a-profile] (urdr.canonical.stream-new) [])])
+
+(define urdr.scenario.test.guards-loop
+  [] -> [ok]
+  [[error profile-type] | Rest] ->
+    (urdr.scenario.test.guards-loop Rest)
+  [Other | Rest] -> [error profile-guard])
+
+(define urdr.scenario.test.guards
+  ->
+    (if (urdr.canonical.symbol-with-profile? [not-a-profile] [97])
+        [error profile-guard]
+        (urdr.scenario.test.guards-loop
+          (urdr.scenario.test.guard-results))))
+
 (define urdr.scenario.test.profiles
+  ->
+    (if (not (= (urdr.scenario.test.guards) [ok]))
+        [error profile-guard]
+        (urdr.scenario.test.profile-values)))
+
+(define urdr.scenario.test.profile-values
   ->
     (if (not (= (urdr.canonical.profile.m0)
                 [urdr.canonical.profile
