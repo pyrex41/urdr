@@ -17,14 +17,26 @@
 \\ scenario that names them is rejected as an unknown field rather than
 \\ silently ignored.
 \\
-\\ Size: a scenario is exactly one canonical value, so the ADR 0002 M0
-\\ resource profile applies unchanged (4,096 payload octets, 256 parsed
-\\ nodes, 32 nested lists, 256-octet atoms). A larger declaration is
-\\ rejected with the ADR 0002 code (frame-too-large, nodes-too-many,
-\\ depth-too-large) rather than silently accepted; raising the ceiling
-\\ is an ADR 0002 amendment, not a scenario-module decision.
+\\ Size: a scenario is exactly one canonical value. Per ADR 0005 the
+\\ scenario/v1 surface names canonical-profile/m1-large statically
+\\ (65,536 payload octets, 8,192 parsed nodes, 64 nested lists; atom,
+\\ symbol, and integer-digit bounds unchanged from ADR 0002). The
+\\ profile is a property of this surface, never of the input: a larger
+\\ declaration is still rejected with the same ADR 0002 stable codes
+\\ (frame-too-large, nodes-too-many, depth-too-large), and the same
+\\ bytes presented to an ADR 0002 m0 surface still reject. Changing the
+\\ assignment is an ADR 0005 amendment, not a scenario-module decision.
 
 (set *urdr.scenario.max-seed* 64)
+
+\\ ---------------------------------------------------------------------
+\\ Canonical resource profile for this surface (ADR 0005). Every
+\\ canonical parse/encode call below names it explicitly; there is no
+\\ default and nothing selects a profile from input content.
+\\ ---------------------------------------------------------------------
+
+(define urdr.scenario.profile
+  -> (urdr.canonical.profile.m1-large))
 
 \\ ---------------------------------------------------------------------
 \\ ASCII names. Spelled as octet lists so no host string model enters
@@ -261,11 +273,14 @@
 \\ Every value that reaches validation must be an ADR 0002 canonical
 \\ value. This single gate rejects floats, improper lists, unordered or
 \\ duplicated record keys, non-normalized software integers, invalid
-\\ UTF-8, oversized atoms, and anything above the M0 resource profile,
-\\ with the ADR 0002 stable code, before any scenario field is read.
+\\ UTF-8, oversized atoms, and anything above this surface's declared
+\\ ADR 0005 resource profile, with the ADR 0002 stable code, before any
+\\ scenario field is read.
 (define urdr.scenario.canonical
   Value ->
-    (let Encoded (urdr.canonical.encode-payload Value)
+    (let Encoded
+      (urdr.canonical.encode-payload-with-profile
+        (urdr.scenario.profile) Value)
       (if (= (hd Encoded) error)
           Encoded
           [ok])))
@@ -1174,7 +1189,8 @@
 (define urdr.scenario.parse-frame
   Octets ->
     (urdr.scenario.parse-decoded
-      (urdr.canonical.decode-frame Octets)))
+      (urdr.canonical.decode-frame-with-profile
+        (urdr.scenario.profile) Octets)))
 
 (define urdr.scenario.parse-decoded
   [error E] -> [error E]
@@ -1338,5 +1354,6 @@
 (define urdr.scenario.encode-frame
   Scenario ->
     (if (urdr.scenario.valid? Scenario)
-        (urdr.canonical.encode-frame (urdr.scenario.value Scenario))
+        (urdr.canonical.encode-frame-with-profile
+          (urdr.scenario.profile) (urdr.scenario.value Scenario))
         [error scenario-type]))
