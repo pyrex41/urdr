@@ -1,0 +1,1 @@
+273:(4:list(6:record(6:egress(4:list(6:record(2:to(4:list(6:record(12:pod-selector(6:record(12:match-labels(6:record(4:role(4:text8:frontend))))))))))))(4:name(4:text1:p))(9:namespace(4:text7:default))(12:pod-selector(6:record(12:match-labels(6:record(4:role(4:text2:db)))))))),

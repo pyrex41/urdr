@@ -1,0 +1,402 @@
+#!/usr/bin/env python3
+"""Offline YAML/JSON to canonical-frame converter for netpol fixtures.
+
+Development convenience only. Per `docs/module-boundaries.md` rule 5 the
+checked-in canonical frames under `protocol/fixtures/v1/netpol/` are the
+semantic inputs; this tool merely helps author them, and nothing it emits
+is trusted until it is checked in and re-derived by the oracle
+(`shen/tests/netpol/oracle.py generate`).
+
+Input is either a Kubernetes-shaped NetworkPolicy document set or a
+scenario universe declaration:
+
+    scripts/netpol-to-canonical policies input.yaml >policies.frame
+    scripts/netpol-to-canonical universe  input.yaml >universe.frame
+
+`policies` accepts a single manifest, a list of manifests, a
+`kind: List` wrapper, or a multi-document YAML stream. Upstream
+camelCase field names (`podSelector`, `policyTypes`, `namespaceSelector`,
+`ipBlock`, `matchLabels`, `matchExpressions`, `endPort`, `hostNetwork`)
+are rewritten to the canonical kebab-case keys, `metadata.name` and
+`metadata.namespace` are lifted onto the policy record, and every record,
+selector value list, and `except` list is emitted in canonical order.
+
+Dependencies: none beyond the standard library. YAML input requires
+PyYAML; when PyYAML is unavailable the tool accepts JSON input only and
+says so.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+try:
+    import yaml as _yaml
+except ImportError:  # pragma: no cover - environment dependent
+    _yaml = None
+
+
+MAX_ATOM = 256
+MAX_FRAME = 4096
+
+
+class Bad(Exception):
+    pass
+
+
+# ---------------------------------------------------------------
+# Canonical encoder (ADR 0002 typed profile)
+# ---------------------------------------------------------------
+
+
+def atom(payload: bytes) -> bytes:
+    if len(payload) > MAX_ATOM:
+        raise Bad(f"atom of {len(payload)} bytes exceeds the ADR 0002 budget")
+    return str(len(payload)).encode("ascii") + b":" + payload
+
+
+def encode(value: tuple) -> bytes:
+    kind = value[0]
+    if kind == "bool":
+        return b"(" + atom(b"bool") + atom(b"true" if value[1] else b"false") + b")"
+    if kind == "int":
+        return b"(" + atom(b"int") + atom(str(value[1]).encode("ascii")) + b")"
+    if kind in ("text", "symbol"):
+        return b"(" + atom(kind.encode("ascii")) + atom(value[1]) + b")"
+    if kind == "list":
+        return b"(" + atom(b"list") + b"".join(encode(v) for v in value[1]) + b")"
+    if kind == "record":
+        body = b""
+        previous = None
+        for key, item in sorted(value[1]):
+            if previous is not None and key == previous:
+                raise Bad(f"duplicate record key {key!r}")
+            previous = key
+            body += b"(" + atom(key) + encode(item) + b")"
+        return b"(" + atom(b"record") + body + b")"
+    raise Bad(f"unencodable value {value!r}")
+
+
+def frame(value: tuple) -> bytes:
+    payload = encode(value)
+    if len(payload) > MAX_FRAME:
+        raise Bad(
+            f"payload of {len(payload)} bytes exceeds the ADR 0002 frame budget;"
+            " split the fixture"
+        )
+    return str(len(payload)).encode("ascii") + b":" + payload + b","
+
+
+def T(value) -> tuple:
+    if not isinstance(value, str):
+        raise Bad(f"expected a string, got {value!r}")
+    return ("text", value.encode("utf-8"))
+
+
+def S(value) -> tuple:
+    if not isinstance(value, str):
+        raise Bad(f"expected a symbol, got {value!r}")
+    return ("symbol", value.encode("ascii"))
+
+
+def N(value) -> tuple:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise Bad(f"expected an integer, got {value!r}")
+    return ("int", value)
+
+
+def R(pairs: dict) -> tuple:
+    return ("record", [(key.encode("ascii"), item) for key, item in pairs.items()])
+
+
+def L(items: list) -> tuple:
+    return ("list", items)
+
+
+def labels(mapping) -> tuple:
+    if mapping is None:
+        mapping = {}
+    if not isinstance(mapping, dict):
+        raise Bad(f"expected a label map, got {mapping!r}")
+    return R({str(key): T(str(item)) for key, item in mapping.items()})
+
+
+# ---------------------------------------------------------------
+# Input
+# ---------------------------------------------------------------
+
+
+def load(path: Path) -> list:
+    data = path.read_text(encoding="utf-8")
+    if path.suffix.lower() == ".json":
+        return [json.loads(data)]
+    if _yaml is None:
+        try:
+            return [json.loads(data)]
+        except json.JSONDecodeError as error:
+            raise Bad(
+                "PyYAML is not installed, so only JSON input is accepted; "
+                f"{path} did not parse as JSON ({error})"
+            ) from error
+    return [document for document in _yaml.safe_load_all(data) if document is not None]
+
+
+def known(mapping: dict, allowed: set, where: str) -> None:
+    for key in mapping:
+        if key not in allowed:
+            raise Bad(f"{where}: field {key!r} is not modelled by the compiler")
+
+
+# ---------------------------------------------------------------
+# Selectors, peers, ports
+# ---------------------------------------------------------------
+
+
+def selector(node, where: str) -> tuple:
+    if node is None:
+        node = {}
+    if not isinstance(node, dict):
+        raise Bad(f"{where}: expected a selector object")
+    known(node, {"matchLabels", "matchExpressions"}, where)
+    body: dict = {}
+    if node.get("matchLabels") is not None:
+        body["match-labels"] = labels(node["matchLabels"])
+    if node.get("matchExpressions") is not None:
+        body["match-expressions"] = L(
+            [expression(item, where) for item in node["matchExpressions"]]
+        )
+    return R(body)
+
+
+def expression(node, where: str) -> tuple:
+    known(node, {"key", "operator", "values"}, where)
+    body = {"key": T(node["key"]), "operator": S(node["operator"])}
+    if node.get("values") is not None:
+        body["values"] = L([T(item) for item in sorted(node["values"])])
+    return R(body)
+
+
+def peer(node, where: str) -> tuple:
+    known(node, {"ipBlock", "namespaceSelector", "podSelector"}, where)
+    body: dict = {}
+    if "ipBlock" in node:
+        block = node["ipBlock"]
+        known(block, {"cidr", "except"}, f"{where}.ipBlock")
+        inner = {"cidr": T(block["cidr"])}
+        if block.get("except") is not None:
+            inner["except"] = L([T(item) for item in sorted(block["except"])])
+        body["ip-block"] = R(inner)
+    if "namespaceSelector" in node:
+        body["namespace-selector"] = selector(node["namespaceSelector"], where)
+    if "podSelector" in node:
+        body["pod-selector"] = selector(node["podSelector"], where)
+    return R(body)
+
+
+def port(node, where: str) -> tuple:
+    known(node, {"port", "endPort", "protocol"}, where)
+    body: dict = {}
+    if "port" in node and node["port"] is not None:
+        value = node["port"]
+        body["port"] = N(value) if isinstance(value, int) else T(str(value))
+    if node.get("endPort") is not None:
+        body["end-port"] = N(node["endPort"])
+    if node.get("protocol") is not None:
+        body["protocol"] = S(node["protocol"])
+    return R(body)
+
+
+def rule(node, where: str, egress: bool) -> tuple:
+    peers_key = "to" if egress else "from"
+    known(node, {peers_key, "ports"}, where)
+    body: dict = {}
+    if peers_key in node:
+        items = node[peers_key] or []
+        body[peers_key] = L([peer(item, where) for item in items])
+    if "ports" in node:
+        items = node["ports"] or []
+        body["ports"] = L([port(item, where) for item in items])
+    return R(body)
+
+
+def policy(node) -> tuple:
+    known(node, {"apiVersion", "kind", "metadata", "spec"}, "policy")
+    metadata = node.get("metadata") or {}
+    known(metadata, {"name", "namespace"}, "policy.metadata")
+    spec = node.get("spec") or {}
+    known(spec, {"podSelector", "policyTypes", "ingress", "egress"}, "policy.spec")
+    if "name" not in metadata:
+        raise Bad("policy.metadata.name is required")
+    if "namespace" not in metadata:
+        raise Bad(
+            "policy.metadata.namespace is required: the compiler resolves"
+            " selectors against a declared namespace universe"
+        )
+    body = {
+        "name": T(metadata["name"]),
+        "namespace": T(metadata["namespace"]),
+        "pod-selector": selector(spec.get("podSelector"), "policy.spec.podSelector"),
+    }
+    if "policyTypes" in spec:
+        body["policy-types"] = L([S(item) for item in sorted(spec["policyTypes"])])
+    if "ingress" in spec:
+        items = spec["ingress"] or []
+        body["ingress"] = L(
+            [rule(item, "policy.spec.ingress", False) for item in items]
+        )
+    if "egress" in spec:
+        items = spec["egress"] or []
+        body["egress"] = L([rule(item, "policy.spec.egress", True) for item in items])
+    return R(body)
+
+
+def flatten(documents: list) -> list:
+    manifests: list = []
+    for document in documents:
+        if isinstance(document, list):
+            manifests.extend(document)
+        elif isinstance(document, dict) and document.get("kind") == "List":
+            manifests.extend(document.get("items") or [])
+        else:
+            manifests.append(document)
+    return manifests
+
+
+def policies_value(documents: list) -> tuple:
+    manifests = flatten(documents)
+    ordered = sorted(
+        manifests,
+        key=lambda item: (
+            (item.get("metadata") or {}).get("namespace", ""),
+            (item.get("metadata") or {}).get("name", ""),
+        ),
+    )
+    return L([policy(item) for item in ordered])
+
+
+# ---------------------------------------------------------------
+# Universe
+# ---------------------------------------------------------------
+
+PROTOCOL_ORDER = {"TCP": 6, "UDP": 17, "SCTP": 132}
+
+
+def universe_value(documents: list) -> tuple:
+    if len(documents) != 1 or not isinstance(documents[0], dict):
+        raise Bad("universe input must be a single mapping document")
+    node = documents[0]
+    known(node, {"namespaces", "pods", "externals", "ports", "protocols"}, "universe")
+    for required in ("namespaces", "pods", "ports", "protocols"):
+        if required not in node:
+            raise Bad(f"universe.{required} is required")
+    body = {
+        "namespaces": L(
+            [
+                namespace_value(item)
+                for item in sorted(node["namespaces"], key=lambda x: x["name"])
+            ]
+        ),
+        "pods": L(
+            [
+                pod_value(item)
+                for item in sorted(
+                    node["pods"], key=lambda x: (x["namespace"], x["name"])
+                )
+            ]
+        ),
+        "ports": L([N(item) for item in sorted(set(node["ports"]))]),
+        "protocols": L(
+            [
+                S(item)
+                for item in sorted(set(node["protocols"]), key=protocol_key)
+            ]
+        ),
+    }
+    if node.get("externals") is not None:
+        body["externals"] = L(
+            [
+                external_value(item)
+                for item in sorted(node["externals"], key=lambda x: x["name"])
+            ]
+        )
+    return R(body)
+
+
+def protocol_key(name: str) -> int:
+    if name not in PROTOCOL_ORDER:
+        raise Bad(f"universe.protocols: {name!r} is not a modelled protocol")
+    return PROTOCOL_ORDER[name]
+
+
+def namespace_value(node) -> tuple:
+    known(node, {"name", "labels"}, "universe.namespaces")
+    body = {"name": T(node["name"])}
+    if node.get("labels"):
+        body["labels"] = labels(node["labels"])
+    return R(body)
+
+
+def pod_value(node) -> tuple:
+    known(
+        node,
+        {"name", "namespace", "address", "labels", "ports", "hostNetwork"},
+        "universe.pods",
+    )
+    body = {
+        "address": T(node["address"]),
+        "name": T(node["name"]),
+        "namespace": T(node["namespace"]),
+    }
+    if node.get("labels"):
+        body["labels"] = labels(node["labels"])
+    if node.get("ports"):
+        body["ports"] = R(
+            {str(key): N(item) for key, item in node["ports"].items()}
+        )
+    if node.get("hostNetwork"):
+        body["host-network"] = ("bool", True)
+    return R(body)
+
+
+def external_value(node) -> tuple:
+    known(node, {"name", "address"}, "universe.externals")
+    return R({"address": T(node["address"]), "name": T(node["name"])})
+
+
+# ---------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 3 or argv[1] not in ("policies", "universe"):
+        print(
+            f"usage: {argv[0]} [policies|universe] INPUT.(yaml|json) >OUT.frame",
+            file=sys.stderr,
+        )
+        return 2
+    if _yaml is None and not argv[2].lower().endswith(".json"):
+        print(
+            "netpol-to-canonical: PyYAML is not installed;"
+            " pass a .json input instead",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        documents = load(Path(argv[2]))
+        value = (
+            policies_value(documents)
+            if argv[1] == "policies"
+            else universe_value(documents)
+        )
+        sys.stdout.buffer.write(frame(value))
+    except (Bad, KeyError, TypeError, OSError) as error:
+        print(f"netpol-to-canonical: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))
