@@ -7,6 +7,17 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 cd "$ROOT"
 
 DEPS=${URDR_DEPENDENCIES:-$ROOT/.cache/urdr/dependencies}
+# In a linked worktree the dependency cache lives beside the main
+# checkout, so fall back to the common git directory's parent.
+if [ ! -d "$DEPS" ]; then
+  COMMON=$(git rev-parse --git-common-dir 2>/dev/null || echo "")
+  if [ -n "$COMMON" ]; then
+    MAIN=$(CDPATH= cd -- "$COMMON/.." && pwd)
+    if [ -d "$MAIN/.cache/urdr/dependencies" ]; then
+      DEPS=$MAIN/.cache/urdr/dependencies
+    fi
+  fi
+fi
 CL=${SHEN_CL:-$DEPS/shen-cl/bin/sbcl/shen}
 GO=${SHEN_GO:-$DEPS/shen-go/.bin/shen-go}
 RUST=${SHEN_RUST:-$DEPS/shen-rust/target/release/shen-rust}
@@ -31,7 +42,8 @@ run_port() {
     cat "$output" >&2
     exit 1
   fi
-  grep -E '^(accept\||reject\||FAIL\||urdr-scenario: |ALL PASS$)' \
+  grep -E \
+    '^(profile\||accept\||large\||reject\||FAIL\||urdr-scenario: |ALL PASS$)' \
     "$output" >"$semantic" || true
   if ! grep -q '^ALL PASS$' "$semantic"; then
     printf '%s: FAIL marker\n' "$name" >&2
@@ -39,7 +51,7 @@ run_port() {
     exit 1
   fi
   digest=$(sha256sum "$semantic" | cut -d' ' -f1)
-  cases=$(grep -c '^\(accept\|reject\)|' "$semantic")
+  cases=$(grep -c '^\(accept\|large\|reject\)|' "$semantic")
   if [ -z "$AGREED" ]; then
     AGREED=$digest
   elif [ "$AGREED" != "$digest" ]; then
