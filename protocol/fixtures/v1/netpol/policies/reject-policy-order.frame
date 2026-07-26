@@ -1,0 +1,1 @@
+362:(4:list(6:record(4:name(4:text1:b))(9:namespace(4:text7:default))(12:pod-selector(6:record(12:match-labels(6:record(4:role(4:text2:db))))))(12:policy-types(4:list(6:symbol7:Ingress))))(6:record(4:name(4:text1:a))(9:namespace(4:text7:default))(12:pod-selector(6:record(12:match-labels(6:record(4:role(4:text2:db))))))(12:policy-types(4:list(6:symbol7:Ingress))))),
