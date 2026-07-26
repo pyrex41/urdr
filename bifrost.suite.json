@@ -115,6 +115,20 @@
       "raw_golden_path": "shen/tests/properties/golden.txt",
       "raw_golden_sha256": "153b6b11171f0440924c88f4a7eb7119996578a0a7b47054a89e5b077f928479",
       "doc": "Property schemas, finite-trace verdicts, and boundary cases"
+    },
+    {
+      "name": "replay-certificate",
+      "mode": "script",
+      "program": "shen/tests/replay/run-tests.shen",
+      "program_sha256": "817c69a20e9e8bab064dbd0e41dd67fd3e30e436ed0112f5eb4797aa615c9e2a",
+      "expect": "marker",
+      "marker": "ALL PASS",
+      "heavy": true,
+      "fixture_manifest": null,
+      "fixture_manifest_sha256": null,
+      "raw_golden_path": "shen/tests/replay/golden.txt",
+      "raw_golden_sha256": "046595da6c92a60bc2620fc3de8243e927ef07f64a7dbfe0897e6324542d6cba",
+      "doc": "Event records, transcript replay, certificates, and run identity"
     }
   ]
 }
