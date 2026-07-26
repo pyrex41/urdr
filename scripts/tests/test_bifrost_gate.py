@@ -38,10 +38,47 @@ def semantic_outputs() -> dict[str, bytes]:
         "WORLD TESTS: 11/11 PASS",
         "ALL PASS",
     ]
+    scenario = [
+        "profile|m0|4096|256|32",
+        "accept|minimal",
+        "reject|self-link|scenario-self-link",
+        "urdr-scenario: 3/3 passed",
+        "ALL PASS",
+    ]
+    netkat = [
+        "NETKAT-OK|eval-drop",
+        "NETKAT-REJECT|bad-arity|term-arity",
+        "NETKAT CASES: 2",
+        "ALL PASS",
+    ]
+    netpol = [
+        "NETPOL-OK|default-deny",
+        "NETPOL-TERM|default-deny|0",
+        "NETPOL MARKER: spec-semantics-only",
+        "NETPOL CASES: 1",
+        "ALL PASS",
+    ]
+    models = [
+        "MODELS-OK|net-send",
+        "MODELS-DIGEST|net-send|ab12",
+        "MODELS CASES: 1",
+        "ALL PASS",
+    ]
+    properties = [
+        "PROP|liveness-late|liveness|FAIL|witness",
+        "PROP|invariant-empty|invariant|PASS|no-witness",
+        "PROPERTIES CASES: 2",
+        "ALL PASS",
+    ]
     return {
         "canonical-values": ("\n".join(canonical) + "\n").encode("ascii"),
         "named-prng": ("\n".join(prng) + "\n").encode("ascii"),
         "world-reducer": ("\n".join(world) + "\n").encode("ascii"),
+        "scenario-parse": ("\n".join(scenario) + "\n").encode("ascii"),
+        "netkat-core": ("\n".join(netkat) + "\n").encode("ascii"),
+        "netpol-compile": ("\n".join(netpol) + "\n").encode("ascii"),
+        "models-conformance": ("\n".join(models) + "\n").encode("ascii"),
+        "property-verdicts": ("\n".join(properties) + "\n").encode("ascii"),
     }
 
 
@@ -68,7 +105,12 @@ def valid_execution():
         {},
         case_results,
         {name: GATE.KERNEL_VERSION for name in GATE.REQUIRED_IMPLS},
-        lambda path: outputs["world-reducer"],
+        lambda path: {
+            "shen/tests/netkat/golden.txt": outputs["netkat-core"],
+            "shen/tests/netpol/golden.txt": outputs["netpol-compile"],
+            "shen/tests/models/golden.txt": outputs["models-conformance"],
+            "shen/tests/properties/golden.txt": outputs["property-verdicts"],
+        }.get(path, outputs["world-reducer"]),
         {
             name: hashlib.sha256(output).hexdigest()
             for name, output in outputs.items()

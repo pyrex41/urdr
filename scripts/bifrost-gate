@@ -20,7 +20,16 @@ CACHE = ROOT / ".cache" / "urdr" / "dependencies"
 SUITE_PATH = ROOT / "bifrost.suite.json"
 KERNEL_VERSION = "41.2"
 REQUIRED_IMPLS = ("shen-go", "shen-lua", "shen-cl", "shen-rust")
-CASE_ORDER = ("canonical-values", "named-prng", "world-reducer")
+CASE_ORDER = (
+    "canonical-values",
+    "named-prng",
+    "world-reducer",
+    "scenario-parse",
+    "netkat-core",
+    "netpol-compile",
+    "models-conformance",
+    "property-verdicts",
+)
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -75,6 +84,76 @@ EXPECTED_CASES = {
         "raw_golden_path": "shen/tests/world/golden.txt",
         "raw_golden_sha256": "9f8b8127c76c817b4d555abc786c7a97ff28d6e36ca819b62ebef1b2f20dccf3",
         "doc": "World reduction, event ordering, replay, named streams, and trace",
+    },
+    "scenario-parse": {
+        "name": "scenario-parse",
+        "mode": "script",
+        "program": "shen/tests/scenario/run-tests.shen",
+        "program_sha256": "3adfcf47bebf534ef3780b94d12f2fb4af1cc8f1582ba20f79fb2f582cbfe061",
+        "expect": "marker",
+        "marker": "ALL PASS",
+        "heavy": True,
+        "fixture_manifest": "protocol/fixtures/v1/scenario/SHA256SUMS",
+        "fixture_manifest_sha256": "502e576ddbfc9f86ee8cf17723b9bf0d9fe5a692bc3607efca3520ade9cdc0ca",
+        "raw_golden_path": None,
+        "raw_golden_sha256": "fdea628a7c6b610864615386679d5898f88333aee13186089325042de4d350e6",
+        "doc": "Scenario DSL parse, validation, profiles, and fixture rejection",
+    },
+    "netkat-core": {
+        "name": "netkat-core",
+        "mode": "script",
+        "program": "shen/tests/netkat/run-tests.shen",
+        "program_sha256": "eb923a317dbe739391c4b9a5c50ab7c95f670f6f369f354664c6b36aff2d4bdb",
+        "expect": "marker",
+        "marker": "ALL PASS",
+        "heavy": True,
+        "fixture_manifest": "protocol/fixtures/v1/netkat/SHA256SUMS",
+        "fixture_manifest_sha256": "f1f86afbfa9fac96c4439fd76fd97c901ebf7cd4e4cce48b8f6c2d3c3fcaaeaa",
+        "raw_golden_path": "shen/tests/netkat/golden.txt",
+        "raw_golden_sha256": "df30b741e25d54aef93e19868bff3fbf74bcc397df213de4e74fa4fd591d817e",
+        "doc": "NetKAT terms, denotation, decision procedures, and mutations",
+    },
+    "netpol-compile": {
+        "name": "netpol-compile",
+        "mode": "script",
+        "program": "shen/tests/netpol/run-tests.shen",
+        "program_sha256": "eae5991f293ea419b8ebc793b0ed7c8f39ee3e6c2dbc17d44c90acd5652e8b4c",
+        "expect": "marker",
+        "marker": "ALL PASS",
+        "heavy": True,
+        "fixture_manifest": "protocol/fixtures/v1/netpol/SHA256SUMS",
+        "fixture_manifest_sha256": "d9a0a2ed6c0466b599204fce1464a7403e896e0c0a57817a727391639f05e3e3",
+        "raw_golden_path": "shen/tests/netpol/golden.txt",
+        "raw_golden_sha256": "09b0be2f36e0175c592458d0ca9c5ebbb02f8077e7f1847ecf8f00bad5e8f6a1",
+        "doc": "NetworkPolicy compilation, admission verdicts, and rejections",
+    },
+    "models-conformance": {
+        "name": "models-conformance",
+        "mode": "script",
+        "program": "shen/tests/models/run-tests.shen",
+        "program_sha256": "5da75c02e02fe8b84a6d0fcaf99b30dab5a55b9227f8ee4ecb82a0df744ea4eb",
+        "expect": "marker",
+        "marker": "ALL PASS",
+        "heavy": True,
+        "fixture_manifest": None,
+        "fixture_manifest_sha256": None,
+        "raw_golden_path": "shen/tests/models/golden.txt",
+        "raw_golden_sha256": "f3f7ae5b47c8eb26ae71ec21ba5eaafe43b800be6025f98b0f65231f08d56f9b",
+        "doc": "Net, timer, and fault components plus the NetKAT witness bridge",
+    },
+    "property-verdicts": {
+        "name": "property-verdicts",
+        "mode": "script",
+        "program": "shen/tests/properties/run-tests.shen",
+        "program_sha256": "28526116736059d2c9cc10d5fa683427de167c9c1910775e01ace2ebf32a2999",
+        "expect": "marker",
+        "marker": "ALL PASS",
+        "heavy": True,
+        "fixture_manifest": None,
+        "fixture_manifest_sha256": None,
+        "raw_golden_path": "shen/tests/properties/golden.txt",
+        "raw_golden_sha256": "153b6b11171f0440924c88f4a7eb7119996578a0a7b47054a89e5b077f928479",
+        "doc": "Property schemas, finite-trace verdicts, and boundary cases",
     },
 }
 
@@ -409,6 +488,22 @@ def semantic_projection(case_name: str, raw: bytes) -> bytes:
         "canonical-values": (b"valid|", b"reject|", b"FAIL|"),
         "named-prng": (b"PASS ", b"FAIL ", b"urdr-prng:"),
         "world-reducer": (b"WORLD-TRACE ", b"WORLD TESTS:", b"WORLD TRACE:"),
+        "scenario-parse": (
+            b"profile|", b"accept|", b"large|", b"reject|", b"FAIL|",
+            b"urdr-scenario: "),
+        "netkat-core": (
+            b"NETKAT-OK|", b"NETKAT-REJECT|", b"NETKAT-FLIP|",
+            b"NETKAT-DIRECT|", b"NETKAT CASES: ", b"NETKAT DIRECT: "),
+        "netpol-compile": (
+            b"NETPOL-OK|", b"NETPOL-TERM|", b"NETPOL-REJECT|",
+            b"NETPOL-FLIP|", b"NETPOL-DIRECT|", b"NETPOL CASES: ",
+            b"NETPOL DIRECT: ", b"NETPOL MARKER: "),
+        "models-conformance": (
+            b"MODELS-OK|", b"MODELS-DIGEST|", b"MODELS-REJECT|",
+            b"MODELS-DIRECT|", b"MODELS CASES: "),
+        "property-verdicts": (
+            b"PROP|", b"SLOT|", b"MUT|", b"LOAD|", b"TRACE|", b"FAIL|",
+            b"PROPERTIES CASES: ", b"PROPERTIES: FAIL"),
     }[case_name]
     lines = [
         line
@@ -425,8 +520,13 @@ def validate_output_shape(case_name: str, semantic: bytes) -> None:
         raise GateFailure(f"{case_name} semantic output must be ASCII") from error
     if not lines or lines[-1] != "ALL PASS":
         raise GateFailure(f"{case_name} raw marker is missing")
-    if any("FAIL" in line for line in lines[:-1]):
-        raise GateFailure(f"{case_name} raw output contains failure")
+    if case_name == "property-verdicts":
+        for line in lines[:-1]:
+            if line == "PROPERTIES: FAIL" or line.startswith("FAIL|"):
+                raise GateFailure(f"{case_name} raw output contains failure")
+    else:
+        if any("FAIL" in line for line in lines[:-1]):
+            raise GateFailure(f"{case_name} raw output contains failure")
     if case_name == "canonical-values":
         valid = re.compile(r"^valid\|[a-z0-9-]+\|[0-9a-f]+$")
         reject = re.compile(r"^reject\|[a-z0-9-]+\|[a-z0-9-]+$")
