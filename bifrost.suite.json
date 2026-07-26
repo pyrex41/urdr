@@ -36,14 +36,14 @@
       "name": "world-reducer",
       "mode": "script",
       "program": "shen/tests/world/run-tests.shen",
-      "program_sha256": "149a3e68cda00d584438ff28be3de5c6f68a7f6adf4fd78c28847be1c528d133",
+      "program_sha256": "886b121fae21c7463a1bc70efc778ec44e837f65ac7ab2939303421156383eba",
       "expect": "marker",
       "marker": "ALL PASS",
       "heavy": true,
       "fixture_manifest": null,
       "fixture_manifest_sha256": null,
       "raw_golden_path": "shen/tests/world/golden.txt",
-      "raw_golden_sha256": "b1bbea1e7d5e1dbebd30130cf5f627e444287463fd62744b6dd0c72b56cc768f",
+      "raw_golden_sha256": "9f8b8127c76c817b4d555abc786c7a97ff28d6e36ca819b62ebef1b2f20dccf3",
       "doc": "World reduction, event ordering, replay, named streams, and trace"
     }
   ]
