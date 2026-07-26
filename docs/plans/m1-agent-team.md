@@ -30,7 +30,17 @@ evidence recorded in the PR body.
    is surfaced as a question or an explicit error path — never silently
    chosen. ADR 0004's decisions are binding; deviations require amending
    the ADR first.
-5. **Model tier.** All implementation and verification agents run Opus.
+5. **Single-port development mode (owner directive, mid-milestone).**
+   From Wave E onward, per-wave merge evidence is shen-cl only — the
+   fastest port, after batches 1–2 proved broad four-port agreement on
+   every merged suite. Waves A–D and C2 retain their recorded four-port
+   evidence. A dedicated end-of-milestone sweep (agent 23,
+   `agent/23-four-port-sweep`) re-runs every M1 suite on all four ports
+   and re-pins anything that disagrees; `docs/status/m1.md` may not
+   claim cross-runtime agreement for single-port waves until that sweep
+   passes. Wave I's exit demonstration item 6 (the conformance gate)
+   runs after the sweep.
+6. **Model tier.** All implementation and verification agents run Opus.
    The semantics-bearing agents (12, 13, 16, 17, 21) additionally warrant
    maximum reasoning effort: their output becomes permanent world
    semantics.
