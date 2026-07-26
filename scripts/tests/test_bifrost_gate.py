@@ -70,6 +70,13 @@ def semantic_outputs() -> dict[str, bytes]:
         "PROPERTIES CASES: 2",
         "ALL PASS",
     ]
+    replay = [
+        "EL|e2e|1a2b",
+        "PROP|l-missing|FAIL|no-witness",
+        "LOOP|100|feed",
+        "REPLAY CASES: 3",
+        "ALL PASS",
+    ]
     return {
         "canonical-values": ("\n".join(canonical) + "\n").encode("ascii"),
         "named-prng": ("\n".join(prng) + "\n").encode("ascii"),
@@ -79,6 +86,7 @@ def semantic_outputs() -> dict[str, bytes]:
         "netpol-compile": ("\n".join(netpol) + "\n").encode("ascii"),
         "models-conformance": ("\n".join(models) + "\n").encode("ascii"),
         "property-verdicts": ("\n".join(properties) + "\n").encode("ascii"),
+        "replay-certificate": ("\n".join(replay) + "\n").encode("ascii"),
     }
 
 
@@ -110,6 +118,7 @@ def valid_execution():
             "shen/tests/netpol/golden.txt": outputs["netpol-compile"],
             "shen/tests/models/golden.txt": outputs["models-conformance"],
             "shen/tests/properties/golden.txt": outputs["property-verdicts"],
+            "shen/tests/replay/golden.txt": outputs["replay-certificate"],
         }.get(path, outputs["world-reducer"]),
         {
             name: hashlib.sha256(output).hexdigest()

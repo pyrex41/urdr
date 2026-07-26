@@ -29,6 +29,7 @@ CASE_ORDER = (
     "netpol-compile",
     "models-conformance",
     "property-verdicts",
+    "replay-certificate",
 )
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -154,6 +155,20 @@ EXPECTED_CASES = {
         "raw_golden_path": "shen/tests/properties/golden.txt",
         "raw_golden_sha256": "153b6b11171f0440924c88f4a7eb7119996578a0a7b47054a89e5b077f928479",
         "doc": "Property schemas, finite-trace verdicts, and boundary cases",
+    },
+    "replay-certificate": {
+        "name": "replay-certificate",
+        "mode": "script",
+        "program": "shen/tests/replay/run-tests.shen",
+        "program_sha256": "817c69a20e9e8bab064dbd0e41dd67fd3e30e436ed0112f5eb4797aa615c9e2a",
+        "expect": "marker",
+        "marker": "ALL PASS",
+        "heavy": True,
+        "fixture_manifest": None,
+        "fixture_manifest_sha256": None,
+        "raw_golden_path": "shen/tests/replay/golden.txt",
+        "raw_golden_sha256": "046595da6c92a60bc2620fc3de8243e927ef07f64a7dbfe0897e6324542d6cba",
+        "doc": "Event records, transcript replay, certificates, and run identity",
     },
 }
 
@@ -504,6 +519,11 @@ def semantic_projection(case_name: str, raw: bytes) -> bytes:
         "property-verdicts": (
             b"PROP|", b"SLOT|", b"MUT|", b"LOAD|", b"TRACE|", b"FAIL|",
             b"PROPERTIES CASES: ", b"PROPERTIES: FAIL"),
+        "replay-certificate": (
+            b"NODES|", b"CA|", b"EL|", b"ELT|", b"ELC|", b"RT|", b"E2E|",
+            b"PROP|", b"SIG|", b"DIV|", b"DIVD|", b"MUT|", b"MARK|",
+            b"CERT|", b"CERTS|", b"CERTD|", b"CERTF|", b"LOOP|", b"FAIL|",
+            b"REPLAY CASES: ", b"REPLAY: FAIL"),
     }[case_name]
     lines = [
         line
@@ -523,6 +543,10 @@ def validate_output_shape(case_name: str, semantic: bytes) -> None:
     if case_name == "property-verdicts":
         for line in lines[:-1]:
             if line == "PROPERTIES: FAIL" or line.startswith("FAIL|"):
+                raise GateFailure(f"{case_name} raw output contains failure")
+    elif case_name == "replay-certificate":
+        for line in lines[:-1]:
+            if line == "REPLAY: FAIL" or line.startswith("FAIL|"):
                 raise GateFailure(f"{case_name} raw output contains failure")
     else:
         if any("FAIL" in line for line in lines[:-1]):
