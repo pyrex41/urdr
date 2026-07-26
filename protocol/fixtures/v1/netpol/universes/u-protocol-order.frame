@@ -1,0 +1,1 @@
+254:(6:record(10:namespaces(4:list(6:record(4:name(4:text7:default)))))(4:pods(4:list(6:record(7:address(4:text9:10.0.0.30))(4:name(4:text3:web))(9:namespace(4:text7:default)))))(5:ports(4:list(3:int2:80)))(9:protocols(4:list(6:symbol3:UDP)(6:symbol3:TCP)))),

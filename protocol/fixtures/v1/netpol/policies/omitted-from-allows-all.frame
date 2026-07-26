@@ -1,0 +1,1 @@
+289:(4:list(6:record(7:ingress(4:list(6:record(5:ports(4:list(6:record(4:port(3:int4:6379))(8:protocol(6:symbol3:TCP))))))))(4:name(4:text1:p))(9:namespace(4:text7:default))(12:pod-selector(6:record(12:match-labels(6:record(4:role(4:text2:db))))))(12:policy-types(4:list(6:symbol7:Ingress))))),

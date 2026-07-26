@@ -1,0 +1,1 @@
+165:(4:list(6:record(4:name(4:text1:p))(9:namespace(4:text7:default))(12:pod-selector(6:record(12:match-labels(6:record))))(12:policy-types(4:list(6:symbol7:Ingress))))),

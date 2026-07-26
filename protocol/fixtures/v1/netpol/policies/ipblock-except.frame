@@ -1,0 +1,1 @@
+333:(4:list(6:record(7:ingress(4:list(6:record(4:from(4:list(6:record(8:ip-block(6:record(4:cidr(4:text11:10.0.0.0/24))(6:except(4:list(4:text12:10.0.0.30/32)))))))))))(4:name(4:text1:p))(9:namespace(4:text7:default))(12:pod-selector(6:record(12:match-labels(6:record(4:role(4:text2:db))))))(12:policy-types(4:list(6:symbol7:Ingress))))),
