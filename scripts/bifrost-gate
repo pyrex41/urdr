@@ -530,6 +530,16 @@ def import_bifrost(path: Path) -> ModuleType:
         raise GateFailure("cannot construct pinned Bifrost module", 2)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    # Urdr heavy cases are pure-Shen (software SHA-256). Bifrost's stock
+    # 300s heavy timeout is enough for its own corpus, but not for
+    # replay-certificate's 100-replay identity loop on shen-rust. Override
+    # after import so the pinned bifrost.py stays pristine.
+    heavy = int(os.environ.get("URDR_BIFROST_HEAVY_TIMEOUT", "2400"))
+    if heavy < 300:
+        raise GateFailure(
+            f"URDR_BIFROST_HEAVY_TIMEOUT must be >= 300, got {heavy}", 2
+        )
+    module.TIMEOUT_HEAVY = heavy
     return module
 
 
@@ -547,7 +557,9 @@ def semantic_projection(case_name: str, raw: bytes) -> bytes:
     prefixes = {
         "canonical-values": (b"valid|", b"reject|", b"FAIL|"),
         "named-prng": (b"PASS ", b"FAIL ", b"urdr-prng:"),
-        "world-reducer": (b"WORLD-TRACE ", b"WORLD TESTS:", b"WORLD TRACE:"),
+        "world-reducer": (
+            b"WORLD-TRACE ", b"WORLD-COMPONENT-TRACE ", b"WORLD TESTS:",
+            b"WORLD TRACE:"),
         "scenario-parse": (
             b"profile|", b"accept|", b"large|", b"reject|", b"FAIL|",
             b"urdr-scenario: "),
@@ -628,9 +640,10 @@ def validate_output_shape(case_name: str, semantic: bytes) -> None:
             raise GateFailure("PRNG raw output test count changed")
     elif case_name == "world-reducer":
         if (
-            len(lines) != 3
+            len(lines) != 4
             or not re.fullmatch(r"WORLD-TRACE [0-9a-f]+", lines[0])
-            or lines[1] != "WORLD TESTS: 11/11 PASS"
+            or not re.fullmatch(r"WORLD-COMPONENT-TRACE [0-9a-f]+", lines[1])
+            or lines[2] != "WORLD TESTS: 21/21 PASS"
         ):
             raise GateFailure("world raw output or lowercase trace changed")
 
