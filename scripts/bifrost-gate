@@ -30,6 +30,9 @@ CASE_ORDER = (
     "models-conformance",
     "property-verdicts",
     "replay-certificate",
+    "explore-shrink",
+    "scenario-grammar",
+    "m1-integration",
 )
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -169,6 +172,48 @@ EXPECTED_CASES = {
         "raw_golden_path": "shen/tests/replay/golden.txt",
         "raw_golden_sha256": "046595da6c92a60bc2620fc3de8243e927ef07f64a7dbfe0897e6324542d6cba",
         "doc": "Event records, transcript replay, certificates, and run identity",
+    },
+    "explore-shrink": {
+        "name": "explore-shrink",
+        "mode": "script",
+        "program": "shen/tests/search/run-tests.shen",
+        "program_sha256": "563bf632a759f00b56e13382325c0fc1680424d3dba3ddb830e486b5719c9b86",
+        "expect": "marker",
+        "marker": "ALL PASS",
+        "heavy": True,
+        "fixture_manifest": None,
+        "fixture_manifest_sha256": None,
+        "raw_golden_path": "shen/tests/search/golden.txt",
+        "raw_golden_sha256": "f724cb47f60856595a3e7683b68c7977cf2682d5661311b1605ac936d0ff6bed",
+        "doc": "Seeded exploration strategies, shrink persistence, and path digests",
+    },
+    "scenario-grammar": {
+        "name": "scenario-grammar",
+        "mode": "script",
+        "program": "shen/tests/search/grammar/run-tests.shen",
+        "program_sha256": "6f306ab58a12bce05807f446af3c5ec97333b19a1eb37596894fab38b3c6b15b",
+        "expect": "marker",
+        "marker": "ALL PASS",
+        "heavy": True,
+        "fixture_manifest": None,
+        "fixture_manifest_sha256": None,
+        "raw_golden_path": "shen/tests/search/grammar/golden.txt",
+        "raw_golden_sha256": "702eb0c7cca69a2fc85683d2266410a493228a5ba1de4b3f014ebf1166bbbc02",
+        "doc": "Seeded generative grammar for scenario families",
+    },
+    "m1-integration": {
+        "name": "m1-integration",
+        "mode": "script",
+        "program": "shen/tests/integration/run-tests.shen",
+        "program_sha256": "fdbded7ec838bbf1f4b37a8773ba6e63146499fc6932b749af7528285adfa94e",
+        "expect": "marker",
+        "marker": "ALL PASS",
+        "heavy": True,
+        "fixture_manifest": None,
+        "fixture_manifest_sha256": None,
+        "raw_golden_path": "shen/tests/integration/golden.txt",
+        "raw_golden_sha256": "e73c5a5281e73a60480a74a6d969fc7efd82ff8dcc7eccf032412f73134b2d66",
+        "doc": "M1 abstract-world exit demonstration (partition-retry)",
     },
 }
 
@@ -524,6 +569,13 @@ def semantic_projection(case_name: str, raw: bytes) -> bytes:
             b"PROP|", b"SIG|", b"DIV|", b"DIVD|", b"MUT|", b"MARK|",
             b"CERT|", b"CERTS|", b"CERTD|", b"CERTF|", b"LOOP|", b"FAIL|",
             b"REPLAY CASES: ", b"REPLAY: FAIL"),
+        "explore-shrink": (
+            b"CHOICE|", b"STRAT|", b"EXPLORE|", b"SHRINK|", b"MUT|",
+            b"REPLAY|", b"SEED|", b"FAIL|", b"EXPLORE-SHRINK CASES: "),
+        "scenario-grammar": (
+            b"SEED|", b"MUT|", b"REPLAY|", b"FAIL|", b"GRAMMAR CASES: "),
+        "m1-integration": (
+            b"DEMO|", b"FAIL|", b"INTEGRATION CASES: "),
     }[case_name]
     lines = [
         line
@@ -547,6 +599,10 @@ def validate_output_shape(case_name: str, semantic: bytes) -> None:
     elif case_name == "replay-certificate":
         for line in lines[:-1]:
             if line == "REPLAY: FAIL" or line.startswith("FAIL|"):
+                raise GateFailure(f"{case_name} raw output contains failure")
+    elif case_name in ("explore-shrink", "scenario-grammar", "m1-integration"):
+        for line in lines[:-1]:
+            if line.startswith("FAIL|"):
                 raise GateFailure(f"{case_name} raw output contains failure")
     else:
         if any("FAIL" in line for line in lines[:-1]):
