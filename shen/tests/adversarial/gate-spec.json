@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "marker": "URDR-ADVERSARIAL-V1",
+  "m1_marker": "URDR-ADVERSARIAL-M1",
   "required_ports": [
     "shen-go",
     "shen-lua",
@@ -32,6 +33,46 @@
     },
     "protocol/fixtures/v1/invalid/duplicate-fields.hex": {
       "wire_hex": "34303a28363a7265636f726428313a6128333a696e74313a31292928313a6128333a696e74313a322929292c"
+    },
+    "protocol/fixtures/v1/scenario/invalid/unknown-field.frame": {
+      "sha256": "a4a36b259e1d535f923715cd50b91d2cc8497da21e12eb4ee0192a95804e38aa",
+      "stable_code": "scenario-unknown-field"
+    },
+    "protocol/fixtures/v1/scenario/invalid/record-order.frame": {
+      "sha256": "f2a9b441d0e5d71029f20a78407e73407e25d50cda989aad88f28e247dd64f6f",
+      "stable_code": "record-order"
+    },
+    "protocol/fixtures/v1/scenario/invalid/record-duplicate.frame": {
+      "sha256": "c39d95db7a0beffb58eda8b9212b692a75edbf7b74b95d807131b610e9d5dfe3",
+      "stable_code": "record-duplicate"
+    },
+    "protocol/fixtures/v1/scenario/invalid/missing-field.frame": {
+      "sha256": "db5718e135a1ab7633ea39103d71edcec623d844b977191835e5e83041c19cdc",
+      "stable_code": "scenario-missing-field"
+    },
+    "protocol/fixtures/v1/netkat/cases/invalid-policy-head.frame": {
+      "sha256": "15f34be7934b4f71f0b7573a5f033d164b7da18f72b206a65bf37d786943f670",
+      "stable_code": "term-head"
+    },
+    "protocol/fixtures/v1/netkat/cases/invalid-policy-field-unknown.frame": {
+      "sha256": "ee73ad4cc600de807afc3d609d73191caf1749d0c6d10174f092362998077550",
+      "stable_code": "term-field-unknown"
+    },
+    "protocol/fixtures/v1/netpol/expect/reject-named-port-unresolved.frame": {
+      "sha256": "ed523cb9911548abc2c2df2d25194e1986b2491b6c3b4383ccf85a39cb93f348",
+      "stable_code": "named-port-unresolved"
+    },
+    "protocol/fixtures/v1/netpol/expect/reject-port-out-of-vocabulary.frame": {
+      "sha256": "d0ce46ebb600117251c794937fd2eb34bee95a54eb4dbd26f94c62428c6a2254",
+      "stable_code": "port-out-of-vocabulary"
+    },
+    "protocol/fixtures/v1/netpol/expect/reject-unmodeled-field.frame": {
+      "sha256": "52cc8a0deab599cec701edacdb2f32ffb14bd4cba3af13477fa8b194dc62af55",
+      "stable_code": "manifest-unmodeled-field"
+    },
+    "protocol/fixtures/v1/netpol/expect/reject-host-network.frame": {
+      "sha256": "cc69b7b9fc34aa5a057d9d3e111adb6daf10073dfe1cc8bacbde11c1125083af",
+      "stable_code": "host-network-pod-under-policy"
     }
   }
 }
