@@ -77,6 +77,28 @@ def semantic_outputs() -> dict[str, bytes]:
         "REPLAY CASES: 3",
         "ALL PASS",
     ]
+    explore = [
+        "CHOICE|kind|fault",
+        "EXPLORE|baseline|found|ab12",
+        "SHRINK|minimize|14|1|true",
+        "MUT|drop-fault|rejected",
+        "EXPLORE-SHRINK CASES: 4",
+        "ALL PASS",
+    ]
+    grammar = [
+        "SEED|a|true|ab12",
+        "REPLAY|withhold|replay-transcript-truncated",
+        "MUT|empty-sizes|rejected",
+        "GRAMMAR CASES: 3",
+        "ALL PASS",
+    ]
+    integration = [
+        "DEMO|1|explore|found|ab12|inject=true",
+        "DEMO|2|shrink|before=14|after=1|persist=true",
+        "DEMO|6|certificate|status=PASS|markers=modeled-world-only",
+        "INTEGRATION CASES: 3",
+        "ALL PASS",
+    ]
     return {
         "canonical-values": ("\n".join(canonical) + "\n").encode("ascii"),
         "named-prng": ("\n".join(prng) + "\n").encode("ascii"),
@@ -87,6 +109,9 @@ def semantic_outputs() -> dict[str, bytes]:
         "models-conformance": ("\n".join(models) + "\n").encode("ascii"),
         "property-verdicts": ("\n".join(properties) + "\n").encode("ascii"),
         "replay-certificate": ("\n".join(replay) + "\n").encode("ascii"),
+        "explore-shrink": ("\n".join(explore) + "\n").encode("ascii"),
+        "scenario-grammar": ("\n".join(grammar) + "\n").encode("ascii"),
+        "m1-integration": ("\n".join(integration) + "\n").encode("ascii"),
     }
 
 
@@ -119,6 +144,9 @@ def valid_execution():
             "shen/tests/models/golden.txt": outputs["models-conformance"],
             "shen/tests/properties/golden.txt": outputs["property-verdicts"],
             "shen/tests/replay/golden.txt": outputs["replay-certificate"],
+            "shen/tests/search/golden.txt": outputs["explore-shrink"],
+            "shen/tests/search/grammar/golden.txt": outputs["scenario-grammar"],
+            "shen/tests/integration/golden.txt": outputs["m1-integration"],
         }.get(path, outputs["world-reducer"]),
         {
             name: hashlib.sha256(output).hexdigest()

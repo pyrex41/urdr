@@ -129,6 +129,48 @@
       "raw_golden_path": "shen/tests/replay/golden.txt",
       "raw_golden_sha256": "046595da6c92a60bc2620fc3de8243e927ef07f64a7dbfe0897e6324542d6cba",
       "doc": "Event records, transcript replay, certificates, and run identity"
+    },
+    {
+      "name": "explore-shrink",
+      "mode": "script",
+      "program": "shen/tests/search/run-tests.shen",
+      "program_sha256": "563bf632a759f00b56e13382325c0fc1680424d3dba3ddb830e486b5719c9b86",
+      "expect": "marker",
+      "marker": "ALL PASS",
+      "heavy": true,
+      "fixture_manifest": null,
+      "fixture_manifest_sha256": null,
+      "raw_golden_path": "shen/tests/search/golden.txt",
+      "raw_golden_sha256": "f724cb47f60856595a3e7683b68c7977cf2682d5661311b1605ac936d0ff6bed",
+      "doc": "Seeded exploration strategies, shrink persistence, and path digests"
+    },
+    {
+      "name": "scenario-grammar",
+      "mode": "script",
+      "program": "shen/tests/search/grammar/run-tests.shen",
+      "program_sha256": "6f306ab58a12bce05807f446af3c5ec97333b19a1eb37596894fab38b3c6b15b",
+      "expect": "marker",
+      "marker": "ALL PASS",
+      "heavy": true,
+      "fixture_manifest": null,
+      "fixture_manifest_sha256": null,
+      "raw_golden_path": "shen/tests/search/grammar/golden.txt",
+      "raw_golden_sha256": "702eb0c7cca69a2fc85683d2266410a493228a5ba1de4b3f014ebf1166bbbc02",
+      "doc": "Seeded generative grammar for scenario families"
+    },
+    {
+      "name": "m1-integration",
+      "mode": "script",
+      "program": "shen/tests/integration/run-tests.shen",
+      "program_sha256": "fdbded7ec838bbf1f4b37a8773ba6e63146499fc6932b749af7528285adfa94e",
+      "expect": "marker",
+      "marker": "ALL PASS",
+      "heavy": true,
+      "fixture_manifest": null,
+      "fixture_manifest_sha256": null,
+      "raw_golden_path": "shen/tests/integration/golden.txt",
+      "raw_golden_sha256": "e73c5a5281e73a60480a74a6d969fc7efd82ff8dcc7eccf032412f73134b2d66",
+      "doc": "M1 abstract-world exit demonstration (partition-retry)"
     }
   ]
 }
