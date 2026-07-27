@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import importlib.util
 import json
@@ -36,6 +37,9 @@ CASE_ORDER = (
 )
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+HEAVY_TIMEOUT_DEFAULT = 2400
+HEAVY_TIMEOUT_MIN = 300
+HEAVY_TIMEOUT_MAX = 7200
 
 EXPECTED_PINS = {
     "bifrost": "51d24d81f7c7a15d382f1c02238453693bb46158",
@@ -263,17 +267,28 @@ def load_json(path: Path) -> dict[str, Any]:
 
 
 def parse_required_impls(value: str) -> tuple[str, ...]:
+    """Parse REQUIRED_IMPLS: non-empty subset of the four reviewed ports.
+
+    Default CI uses all four. Single-port development (e.g. ``shen-cl``)
+    is allowed so M1 can advance while slower ports are investigated
+    separately; lock pins for unused ports are still validated.
+    """
     names = tuple(part.strip() for part in value.split(",") if part.strip())
-    if len(names) < len(REQUIRED_IMPLS):
-        raise GateFailure("required implementation matrix contains fewer than four ports")
+    if not names:
+        raise GateFailure("required implementation matrix is empty")
     if len(names) != len(set(names)):
         raise GateFailure("required implementation matrix contains duplicate ports")
-    if set(names) != set(REQUIRED_IMPLS):
+    unknown = [name for name in names if name not in REQUIRED_IMPLS]
+    if unknown:
         raise GateFailure(
-            "required implementation matrix must be exactly "
+            "unknown required port(s): "
+            + ",".join(unknown)
+            + " (allowed: "
             + ",".join(REQUIRED_IMPLS)
+            + ")"
         )
-    return REQUIRED_IMPLS
+    # Stable order matching REQUIRED_IMPLS, not the env string order.
+    return tuple(name for name in REQUIRED_IMPLS if name in set(names))
 
 
 def load_and_validate_locks() -> dict[str, dict[str, Any]]:
@@ -483,11 +498,12 @@ def git_output(checkout: Path, *arguments: str) -> str:
 
 
 def verify_checkouts(
-    entries: dict[str, dict[str, Any]]
+    entries: dict[str, dict[str, Any]],
+    required: tuple[str, ...],
 ) -> tuple[dict[str, Path], dict[str, dict[str, Any]]]:
     paths: dict[str, Path] = {}
     evidence: dict[str, dict[str, Any]] = {}
-    for name in ("bifrost", *REQUIRED_IMPLS):
+    for name in ("bifrost", *required):
         checkout = checkout_path(name, entries[name])
         if not checkout.is_dir():
             raise GateFailure(f"missing pinned checkout for {name}: {checkout}", 2)
@@ -510,9 +526,12 @@ def verify_checkouts(
     return paths, evidence
 
 
-def resolve_launchers(paths: dict[str, Path]) -> dict[str, Path]:
+def resolve_launchers(
+    paths: dict[str, Path],
+    required: tuple[str, ...],
+) -> dict[str, Path]:
     launchers: dict[str, Path] = {}
-    for name in REQUIRED_IMPLS:
+    for name in required:
         path = paths[name] / LAUNCHERS[name]
         if not path.is_file() or not os.access(path, os.X_OK):
             raise GateFailure(f"missing executable launcher for {name}: {path}", 2)
@@ -521,7 +540,43 @@ def resolve_launchers(paths: dict[str, Path]) -> dict[str, Path]:
     return launchers
 
 
-def import_bifrost(path: Path) -> ModuleType:
+def resolve_heavy_timeout() -> int:
+    """Seconds allowed per heavy case, from URDR_BIFROST_HEAVY_TIMEOUT."""
+    raw = os.environ.get("URDR_BIFROST_HEAVY_TIMEOUT", str(HEAVY_TIMEOUT_DEFAULT))
+    try:
+        heavy = int(raw)
+    except ValueError:
+        raise GateFailure(
+            f"URDR_BIFROST_HEAVY_TIMEOUT must be an integer, got {raw!r}", 2
+        ) from None
+    if not HEAVY_TIMEOUT_MIN <= heavy <= HEAVY_TIMEOUT_MAX:
+        raise GateFailure(
+            f"URDR_BIFROST_HEAVY_TIMEOUT must be "
+            f"{HEAVY_TIMEOUT_MIN}..{HEAVY_TIMEOUT_MAX}, got {heavy}",
+            2,
+        )
+    return heavy
+
+
+def apply_heavy_timeout(module: ModuleType, heavy: int) -> None:
+    """Raise the pinned Bifrost's heavy-case timeout without editing it.
+
+    Urdr heavy cases are pure-Shen (software SHA-256). Bifrost's stock 300s
+    heavy timeout is enough for its own corpus, but not for
+    replay-certificate's 100-replay identity loop on shen-rust.
+
+    Rebinding module.TIMEOUT_HEAVY alone is not enough: execute_cases takes
+    `heavy_timeout=TIMEOUT_HEAVY` as a default argument, bound at import, and
+    run_suite never passes it explicitly. Bind the keyword on the module
+    attribute instead -- run_suite resolves execute_cases as a global at call
+    time, so the partial takes effect while the pinned bifrost.py stays
+    pristine. TIMEOUT_HEAVY is still set for the call-time readers.
+    """
+    module.TIMEOUT_HEAVY = heavy
+    module.execute_cases = functools.partial(module.execute_cases, heavy_timeout=heavy)
+
+
+def import_bifrost(path: Path, heavy: int) -> ModuleType:
     runner = path / "bifrost.py"
     if not runner.is_file():
         raise GateFailure(f"pinned Bifrost runner is missing: {runner}", 2)
@@ -530,23 +585,16 @@ def import_bifrost(path: Path) -> ModuleType:
         raise GateFailure("cannot construct pinned Bifrost module", 2)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    # Urdr heavy cases are pure-Shen (software SHA-256). Bifrost's stock
-    # 300s heavy timeout is enough for its own corpus, but not for
-    # replay-certificate's 100-replay identity loop on shen-rust. Override
-    # after import so the pinned bifrost.py stays pristine.
-    heavy = int(os.environ.get("URDR_BIFROST_HEAVY_TIMEOUT", "2400"))
-    if heavy < 300:
-        raise GateFailure(
-            f"URDR_BIFROST_HEAVY_TIMEOUT must be >= 300, got {heavy}", 2
-        )
-    module.TIMEOUT_HEAVY = heavy
+    apply_heavy_timeout(module, heavy)
     return module
 
 
-def validate_versions(versions: dict[str, str]) -> None:
-    if set(versions) != set(REQUIRED_IMPLS):
-        raise GateFailure("live version probes do not cover exactly four ports")
-    for name in REQUIRED_IMPLS:
+def validate_versions(versions: dict[str, str], required: tuple[str, ...]) -> None:
+    if set(versions) != set(required):
+        raise GateFailure(
+            "live version probes do not cover exactly the required ports"
+        )
+    for name in required:
         if versions[name] != KERNEL_VERSION:
             raise GateFailure(
                 f"{name} reported kernel {versions[name]!r}, expected 41.2"
@@ -655,15 +703,16 @@ def validate_execution(
     versions: dict[str, str],
     golden_loader: Callable[[str], bytes],
     expected_output_hashes: dict[str, str] | None = None,
+    required: tuple[str, ...] = REQUIRED_IMPLS,
 ) -> dict[str, Any]:
-    if len(available_names) < len(REQUIRED_IMPLS):
-        raise GateFailure("Bifrost made fewer than four required ports available")
-    if set(available_names) != set(REQUIRED_IMPLS):
+    if not required:
+        raise GateFailure("required implementation matrix is empty")
+    if set(available_names) != set(required):
         raise GateFailure("Bifrost available matrix differs from required ports")
-    missing = [name for name in REQUIRED_IMPLS if name in skipped]
+    missing = [name for name in required if name in skipped]
     if missing:
         raise GateFailure("Bifrost skipped required ports: " + ",".join(missing))
-    validate_versions(versions)
+    validate_versions(versions, required)
     if set(case_results) != set(CASE_ORDER):
         raise GateFailure("Bifrost result does not contain all semantic cases")
     output_hashes = expected_output_hashes or {
@@ -680,12 +729,14 @@ def validate_execution(
                 f"{case_name} Bifrost verdict is {result.get('verdict')!r}"
             )
         per_impl = result.get("per_impl")
-        if not isinstance(per_impl, dict) or set(per_impl) != set(REQUIRED_IMPLS):
-            raise GateFailure(f"{case_name} does not contain exactly four ports")
+        if not isinstance(per_impl, dict) or set(per_impl) != set(required):
+            raise GateFailure(
+                f"{case_name} does not contain exactly the required ports"
+            )
         raw_outputs: dict[str, bytes] = {}
         semantic_outputs: dict[str, bytes] = {}
         ports: dict[str, Any] = {}
-        for name in REQUIRED_IMPLS:
+        for name in required:
             port = per_impl[name]
             status = port.get("status")
             if status in ("SKIP", "DIVERGE"):
@@ -711,7 +762,7 @@ def validate_execution(
             }
         if len(set(semantic_outputs.values())) != 1:
             raise GateFailure(f"{case_name} raw direct semantic outputs disagree")
-        agreed = semantic_outputs[REQUIRED_IMPLS[0]]
+        agreed = semantic_outputs[required[0]]
         if sha256(agreed) != output_hashes[case_name]:
             raise GateFailure(f"{case_name} raw direct output differs from golden SHA")
         golden_name = EXPECTED_CASES[case_name]["raw_golden_path"]
@@ -763,6 +814,7 @@ def execute(
         case_results,
         versions,
         lambda relative: root_path(relative).read_bytes(),
+        required=required,
     )
     return case_evidence, skipped, versions
 
@@ -772,7 +824,6 @@ def main() -> int:
         "schema_version": 1,
         "gate": "urdr-m0-strict-bifrost",
         "status": "ERROR",
-        "required_implementations": list(REQUIRED_IMPLS),
         "kernel_version": KERNEL_VERSION,
     }
     try:
@@ -783,12 +834,15 @@ def main() -> int:
         required = parse_required_impls(
             os.environ.get("REQUIRED_IMPLS", ",".join(REQUIRED_IMPLS))
         )
+        evidence["required_implementations"] = list(required)
+        heavy_timeout = resolve_heavy_timeout()
+        evidence["bifrost_heavy_timeout"] = heavy_timeout
         entries = load_and_validate_locks()
         cases = validate_manifest(load_json(SUITE_PATH))
         input_evidence = verify_semantic_inputs(cases)
-        paths, dependency_evidence = verify_checkouts(entries)
-        launchers = resolve_launchers(paths)
-        module = import_bifrost(paths["bifrost"])
+        paths, dependency_evidence = verify_checkouts(entries, required)
+        launchers = resolve_launchers(paths, required)
+        module = import_bifrost(paths["bifrost"], heavy_timeout)
         case_evidence, skipped, versions = execute(module, required)
         evidence.update(
             {
