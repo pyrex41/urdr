@@ -5,7 +5,7 @@
     {
       "name": "shen-go",
       "repository": "https://github.com/pyrex41/shen-go.git",
-      "commit": "8775fc366945bfe863f0cb0e0af2ada901ae1819",
+      "commit": "7db25b23a0b9af6f0166cb6873e6b8f56e19f0ca",
       "destination": "shen-go",
       "kernel_version": "41.2",
       "required": true
@@ -13,7 +13,7 @@
     {
       "name": "shen-lua",
       "repository": "https://github.com/pyrex41/shen-lua.git",
-      "commit": "c85ad7edc79e183918b67862b8a60fa17c7ac9b9",
+      "commit": "e47bbfd83f11ea5176aaa05ddec49a26c06008c4",
       "destination": "shen-lua",
       "kernel_version": "41.2",
       "required": true
@@ -29,7 +29,7 @@
     {
       "name": "shen-rust",
       "repository": "https://github.com/pyrex41/shen-rust.git",
-      "commit": "a529924d7f9c16d839397148cf60747f736dd7b1",
+      "commit": "bf884061ecdbe4f79f30a095b01eb89e82f0a3f6",
       "destination": "shen-rust",
       "kernel_version": "41.2",
       "required": true
