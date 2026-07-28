@@ -21,7 +21,7 @@
     {
       "name": "shen-cl",
       "repository": "https://github.com/pyrex41/shen-cl.git",
-      "commit": "8df94be8365ab48561655673593c137f55f92cdb",
+      "commit": "dc3b599c440a94cb717e01f8c7ef674c5ff5f988",
       "destination": "shen-cl",
       "kernel_version": "41.2",
       "required": true
