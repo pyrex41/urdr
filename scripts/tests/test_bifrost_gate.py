@@ -7,6 +7,8 @@ import hashlib
 import importlib.machinery
 import importlib.util
 import json
+import os
+import types
 import unittest
 from pathlib import Path
 
@@ -35,7 +37,8 @@ def semantic_outputs() -> dict[str, bytes]:
     ]
     world = [
         "WORLD-TRACE abcd",
-        "WORLD TESTS: 11/11 PASS",
+        "WORLD-COMPONENT-TRACE ef01",
+        "WORLD TESTS: 21/21 PASS",
         "ALL PASS",
     ]
     scenario = [
@@ -115,7 +118,8 @@ def semantic_outputs() -> dict[str, bytes]:
     }
 
 
-def valid_execution():
+def valid_execution(required: tuple[str, ...] | None = None):
+    ports = required if required is not None else GATE.REQUIRED_IMPLS
     outputs = semantic_outputs()
     case_results = {}
     for case_name, output in outputs.items():
@@ -130,14 +134,14 @@ def valid_execution():
                     "norm": output.decode("ascii").strip(),
                     "raw": output.decode("ascii"),
                 }
-                for name in GATE.REQUIRED_IMPLS
+                for name in ports
             },
         }
     return (
-        list(GATE.REQUIRED_IMPLS),
+        list(ports),
         {},
         case_results,
-        {name: GATE.KERNEL_VERSION for name in GATE.REQUIRED_IMPLS},
+        {name: GATE.KERNEL_VERSION for name in ports},
         lambda path: {
             "shen/tests/netkat/golden.txt": outputs["netkat-core"],
             "shen/tests/netpol/golden.txt": outputs["netpol-compile"],
@@ -152,6 +156,7 @@ def valid_execution():
             name: hashlib.sha256(output).hexdigest()
             for name, output in outputs.items()
         },
+        ports,
     )
 
 
@@ -268,7 +273,7 @@ class MatrixMutationTests(unittest.TestCase):
     def test_altered_port_matrix_is_rejected(self) -> None:
         self.assert_rejected(
             lambda values: values[0].pop(),
-            "fewer than four",
+            "available matrix differs from required ports",
         )
 
     def test_missing_port_is_rejected(self) -> None:
@@ -344,13 +349,94 @@ class RequiredMatrixTests(unittest.TestCase):
             GATE.REQUIRED_IMPLS,
         )
 
-    def test_fewer_than_four_requested_is_rejected(self) -> None:
-        with self.assertRaisesRegex(GATE.GateFailure, "fewer than four"):
-            GATE.parse_required_impls("shen-go,shen-lua,shen-cl")
+    def test_single_port_development_matrix_is_accepted(self) -> None:
+        self.assertEqual(GATE.parse_required_impls("shen-cl"), ("shen-cl",))
 
-    def test_optional_port_cannot_replace_required_port(self) -> None:
-        with self.assertRaisesRegex(GATE.GateFailure, "exactly"):
+    def test_subset_is_reordered_to_reviewed_port_order(self) -> None:
+        self.assertEqual(
+            GATE.parse_required_impls("shen-cl,shen-go"),
+            ("shen-go", "shen-cl"),
+        )
+
+    def test_empty_matrix_is_rejected(self) -> None:
+        with self.assertRaisesRegex(GATE.GateFailure, "empty"):
+            GATE.parse_required_impls("")
+
+    def test_duplicate_ports_are_rejected(self) -> None:
+        with self.assertRaisesRegex(GATE.GateFailure, "duplicate"):
+            GATE.parse_required_impls("shen-cl,shen-cl")
+
+    def test_unknown_port_is_rejected(self) -> None:
+        with self.assertRaisesRegex(GATE.GateFailure, "unknown required port"):
             GATE.parse_required_impls("shen-go,shen-lua,shen-cl,shenscript")
+
+    def test_single_port_execution_validates_against_goldens(self) -> None:
+        values = list(valid_execution(required=("shen-cl",)))
+        evidence = GATE.validate_execution(*values)
+        self.assertEqual(set(evidence["world-reducer"]["ports"]), {"shen-cl"})
+
+
+def stub_bifrost() -> types.ModuleType:
+    """A module that binds the heavy timeout exactly as pinned bifrost.py does.
+
+    execute_cases takes heavy_timeout as a default argument evaluated at
+    import, and run_suite calls it without passing one -- so rebinding
+    TIMEOUT_HEAVY alone leaves the stock value in force.
+    """
+    module = types.ModuleType("stub_bifrost")
+    source = (
+        "TIMEOUT_HEAVY = 300\n"
+        "def execute_cases(cases, available, suite, heavy_timeout=TIMEOUT_HEAVY,\n"
+        "                  progress=True, shake=False):\n"
+        "    return heavy_timeout\n"
+        "def run_suite(suite, progress=False, shake=False):\n"
+        "    return execute_cases([], {}, suite, progress=progress, shake=shake)\n"
+    )
+    exec(source, module.__dict__)
+    return module
+
+
+class HeavyTimeoutTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.env = os.environ.pop("URDR_BIFROST_HEAVY_TIMEOUT", None)
+
+    def tearDown(self) -> None:
+        os.environ.pop("URDR_BIFROST_HEAVY_TIMEOUT", None)
+        if self.env is not None:
+            os.environ["URDR_BIFROST_HEAVY_TIMEOUT"] = self.env
+
+    def test_default_is_used_when_unset(self) -> None:
+        self.assertEqual(GATE.resolve_heavy_timeout(), GATE.HEAVY_TIMEOUT_DEFAULT)
+
+    def test_env_override_is_honoured(self) -> None:
+        os.environ["URDR_BIFROST_HEAVY_TIMEOUT"] = "900"
+        self.assertEqual(GATE.resolve_heavy_timeout(), 900)
+
+    def test_non_integer_is_rejected(self) -> None:
+        os.environ["URDR_BIFROST_HEAVY_TIMEOUT"] = "forever"
+        with self.assertRaisesRegex(GATE.GateFailure, "must be an integer"):
+            GATE.resolve_heavy_timeout()
+
+    def test_below_floor_is_rejected(self) -> None:
+        os.environ["URDR_BIFROST_HEAVY_TIMEOUT"] = str(GATE.HEAVY_TIMEOUT_MIN - 1)
+        with self.assertRaisesRegex(GATE.GateFailure, "must be 300..7200"):
+            GATE.resolve_heavy_timeout()
+
+    def test_above_ceiling_is_rejected(self) -> None:
+        os.environ["URDR_BIFROST_HEAVY_TIMEOUT"] = str(GATE.HEAVY_TIMEOUT_MAX + 1)
+        with self.assertRaisesRegex(GATE.GateFailure, "must be 300..7200"):
+            GATE.resolve_heavy_timeout()
+
+    def test_stub_reproduces_the_stock_default_binding(self) -> None:
+        module = stub_bifrost()
+        module.TIMEOUT_HEAVY = 2400
+        self.assertEqual(module.run_suite(None), 300)
+
+    def test_override_reaches_the_cases_run_by_run_suite(self) -> None:
+        module = stub_bifrost()
+        GATE.apply_heavy_timeout(module, 2400)
+        self.assertEqual(module.TIMEOUT_HEAVY, 2400)
+        self.assertEqual(module.run_suite(None), 2400)
 
 
 if __name__ == "__main__":
