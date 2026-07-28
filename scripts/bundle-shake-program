@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""Flatten a urdr test program into one self-contained .shen for shaking.
+
+Ratatoskr is a static tree-shaker: it reads the program text and follows what
+it can see. urdr's suites do not use `(load ...)`; they pull modules in with
+
+    (define urt.quiet-load
+      File -> (urt.eval-forms (read-file File)))
+    (urt.quiet-load "shen/world/prng.shen")   \\ or a plain (load ...)
+
+which resolves the file name at *runtime* via read-file + eval. A shaker
+cannot follow that, so shaking a suite unmodified yields a slice with none of
+urdr's modules in it. This script inlines them ahead of time.
+
+The `(urt.quiet-load ...)` calls are already written in dependency order, so
+that sequence is the emit order. Module-level `(load ...)` forms are dropped
+(the module's dependency is inlined separately) -- but only after checking the
+target was already emitted, so a dependency can never be silently lost.
+
+Fixture reads are left alone: those are runtime *data* reads, and the shaken
+artifact resolves them relative to its working directory, which the gate runs
+from the repository root.
+
+Usage:
+    scripts/bundle-shake-program PROGRAM [OUT]
+
+With no OUT the bundle goes to stdout.
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+MODULE_LOAD = re.compile(r'^\(load\s+"([^"]+)"\)\s*$')
+# urdr suites pull modules in one of two ways, and Ratatoskr follows neither:
+# a plain top-level (load ...), or a read-file + eval helper. Each suite names
+# its own helper -- urt./uwt./unt./uit. and friends -- so match any prefix.
+PROGRAM_LOAD = re.compile(
+    r'^\((?:[A-Za-z0-9_.\-]+\.)?quiet-load\s+"([^"]+)"\)\s*$'
+    r'|^\(load\s+"([^"]+)"\)\s*$'
+)
+
+
+def program_load_target(line: str) -> str | None:
+    match = PROGRAM_LOAD.match(line)
+    if match is None:
+        return None
+    return match.group(1) or match.group(2)
+
+
+class BundleError(Exception):
+    pass
+
+
+def emit_module(relative: str, emitted: list[str], parts: list[str],
+                stack: tuple[str, ...] = ()) -> None:
+    """Append `relative` to `parts`, inlining its own `(load ...)` deps first.
+
+    A module's dependency is emitted before the module itself, so dropping the
+    `(load ...)` line cannot lose it. Already-emitted modules are skipped, and
+    a cycle is an error rather than a hang.
+    """
+    if relative in emitted:
+        return
+    if relative in stack:
+        raise BundleError("load cycle: " + " -> ".join(stack + (relative,)))
+    path = ROOT / relative
+    if not path.is_file():
+        raise BundleError(f"module not found: {relative}")
+
+    body: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = MODULE_LOAD.match(line)
+        if match is None:
+            body.append(line)
+            continue
+        target = match.group(1)
+        emit_module(target, emitted, parts, stack + (relative,))
+        body.append(f"\\\\ bundled: (load \"{target}\") -- inlined above")
+
+    parts.append(f"\\\\ ---- {relative} ----")
+    parts.append("\n".join(body))
+    parts.append("")
+    emitted.append(relative)
+
+
+def bundle(program: str) -> str:
+    path = ROOT / program if not Path(program).is_absolute() else Path(program)
+    if not path.is_file():
+        raise BundleError(f"program not found: {program}")
+    lines = path.read_text(encoding="utf-8").splitlines()
+
+    modules = [t for t in (program_load_target(l) for l in lines) if t]
+    if not modules:
+        raise BundleError(
+            f"{program} has no top-level (load ...) or *.quiet-load "
+            "calls to inline"
+        )
+
+    rel = path.relative_to(ROOT).as_posix()
+    parts = [
+        f"\\\\ AUTO-GENERATED from {rel} by scripts/bundle-shake-program.",
+        "\\\\ Do not edit. Modules are inlined in the program's own load order so",
+        "\\\\ a static shaker can see them; see the script for why.",
+        "",
+    ]
+    emitted: list[str] = []
+    for module in modules:
+        emit_module(module, emitted, parts)
+
+    parts.append(f"\\\\ ---- {rel} ----")
+    body = [
+        line if program_load_target(line) is None
+        else f"\\\\ bundled: {line.strip()}"
+        for line in lines
+    ]
+    parts.append("\n".join(body))
+    return "\n".join(parts) + "\n"
+
+
+def main() -> int:
+    if len(sys.argv) not in (2, 3):
+        print(__doc__.strip().splitlines()[-3], file=sys.stderr)
+        print("usage: scripts/bundle-shake-program PROGRAM [OUT]", file=sys.stderr)
+        return 2
+    try:
+        text = bundle(sys.argv[1])
+    except BundleError as error:
+        print(f"bundle-shake-program: {error}", file=sys.stderr)
+        return 1
+    if len(sys.argv) == 3:
+        out = Path(sys.argv[2])
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
+        print(f"wrote {out} ({len(text.splitlines())} lines)")
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
