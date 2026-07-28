@@ -180,6 +180,26 @@
             (urdr.test.hex.octets
               "6162636462636465636465666465666765666768666768696768696a68696a6b696a6b6c6a6b6c6d6b6c6d6e6c6d6e6f6d6e6f706e6f7071")))))
           "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1")
+        \* ADR 0003 byte-for-byte verification of the optional shen.x host
+           extension. urdr.prng.sha256.raw dispatches to the port's native
+           SHA-256 when the port binds it; urdr.prng.sha256.pure is the
+           arithmetic-only oracle. Combined with the nist-* vectors above
+           (which pin the dispatched result), these pin the oracle too, so
+           neither path can drift without failing the suite. On a port with
+           no extension both sides are the oracle and the checks are
+           tautological but harmless. *\
+        (urdr.test.ok "sha-host-agrees-empty"
+          (urdr.prng.sha256.raw []) (urdr.prng.sha256.pure []))
+        (urdr.test.ok "sha-host-agrees-abc"
+          (urdr.prng.sha256.raw [97 98 99])
+          (urdr.prng.sha256.pure [97 98 99]))
+        (urdr.test.ok "sha-host-agrees-multiblock"
+          (urdr.prng.sha256.raw
+            (urdr.test.hex.octets
+              "6162636462636465636465666465666765666768666768696768696a68696a6b696a6b6c6a6b6c6d6b6c6d6e6c6d6e6f6d6e6f706e6f7071"))
+          (urdr.prng.sha256.pure
+            (urdr.test.hex.octets
+              "6162636462636465636465666465666765666768666768696768696a68696a6b696a6b6c6a6b6c6d6b6c6d6e6c6d6e6f6d6e6f706e6f7071")))
         (urdr.test.ok "uvar-zero"
           (urdr.prng.uvar.encode (urdr.int.zero)) [ok [0]])
         (urdr.test.ok "uvar-128"
