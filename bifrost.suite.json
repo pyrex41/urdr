@@ -22,14 +22,14 @@
       "name": "named-prng",
       "mode": "script",
       "program": "shen/tests/prng/run-tests.shen",
-      "program_sha256": "4e70c73713e396b67c9d393ac953ceeaf465e0b37ce3eaf3b6f9c93d637e3401",
+      "program_sha256": "c65cdce431ecaf9aed26a437a20efbfa78ae2541bdfb574cbcfd28393bc31b7b",
       "expect": "marker",
       "marker": "ALL PASS",
       "heavy": true,
       "fixture_manifest": "protocol/fixtures/v1/prng/SHA256SUMS",
       "fixture_manifest_sha256": "aa3276def93fb855593d38ec2551ecce58a6726d9a1d6cfbb73ff2a37f0463b8",
       "raw_golden_path": null,
-      "raw_golden_sha256": "817e441b925f2b5239500c4c515e35b821f53a47f66fd8a3cc6b37523dcc9e4c",
+      "raw_golden_sha256": "25eaee92370a65103a86fec7f42151fbc85ddfbbe7f69624de6220bfe7244a07",
       "doc": "Portable integers, SHA-256, named streams, sampling, and vectors"
     },
     {

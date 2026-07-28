@@ -327,7 +327,7 @@
       (urdr.prng.sha.compress
         State (urdr.prng.list.take 64 Bytes))))
 
-(define urdr.prng.sha256.raw
+(define urdr.prng.sha256.pure
   Bytes -> (let Padded (urdr.prng.sha.pad Bytes)
              (if (= (hd Padded) error)
                  Padded
@@ -335,6 +335,47 @@
                    (urdr.prng.sha.blocks
                      (hd (tl Padded))
                      (urdr.prng.sha.initial))))))
+
+\* ---- host acceleration (ADR 0003) ----
+
+A port that implements the shen.x SHA-256 extension binds
+shen.x.sha256-octets-host (list of 0..255 -> 32-byte list) and may set
+shen.x.*sha256-backend* to host. When that binding is present urdr uses it;
+otherwise the arithmetic-only oracle above runs unchanged.
+
+ADR 0003 permits native acceleration only as a byte-for-byte verified
+optimization, with portable Shen remaining the semantic oracle. Both
+properties hold here: urdr.prng.sha256.pure is always reachable and is what
+runs on any port without the extension, and shen/tests/prng/run-tests.shen
+checks the host result against the pure result on every vector, so a
+disagreeing host fails the suite rather than silently changing semantics.
+
+Disabling is a port-level concern (SHEN_X_SHA256=pure), so no host
+environment read enters urdr semantics. *\
+
+(define urdr.prng.sha256.host?
+  -> (trap-error
+       (= (value shen.x.*sha256-backend*) host)
+       (/. E
+           (trap-error
+             (do (shen.x.sha256-octets-host []) true)
+             (/. E2 false)))))
+
+\\ Keep the pure length guard so the host path is identical in every case,
+\\ including the unreachable over-long message. It costs one list walk
+\\ against native compression, not against 64 software rounds per block.
+(define urdr.prng.sha256.via-host
+  Bytes -> (let Info (urdr.prng.sha.message-info Bytes)
+                LenBytes (urdr.prng.int.fixed-be
+                           (urdr.int.raw.mul-small (hd Info) 8) 8)
+             (if (= (hd LenBytes) error)
+                 [error sha-message-too-long]
+                 (shen.x.sha256-octets-host Bytes))))
+
+(define urdr.prng.sha256.raw
+  Bytes -> (if (urdr.prng.sha256.host?)
+               (urdr.prng.sha256.via-host Bytes)
+               (urdr.prng.sha256.pure Bytes)))
 
 (define urdr.prng.octets.check
   Bs -> (urdr.int.octets.check Bs))
