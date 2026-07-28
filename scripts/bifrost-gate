@@ -43,10 +43,10 @@ HEAVY_TIMEOUT_MAX = 7200
 
 EXPECTED_PINS = {
     "bifrost": "51d24d81f7c7a15d382f1c02238453693bb46158",
-    "shen-go": "8775fc366945bfe863f0cb0e0af2ada901ae1819",
-    "shen-lua": "c85ad7edc79e183918b67862b8a60fa17c7ac9b9",
+    "shen-go": "7db25b23a0b9af6f0166cb6873e6b8f56e19f0ca",
+    "shen-lua": "e47bbfd83f11ea5176aaa05ddec49a26c06008c4",
     "shen-cl": "8df94be8365ab48561655673593c137f55f92cdb",
-    "shen-rust": "a529924d7f9c16d839397148cf60747f736dd7b1",
+    "shen-rust": "bf884061ecdbe4f79f30a095b01eb89e82f0a3f6",
     "shenscript": "35b8269f75afbac9939ac0e8c7838cc4bf00d448",
 }
 
