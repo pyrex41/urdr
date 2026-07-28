@@ -473,14 +473,34 @@ def checkout_path(name: str, entry: dict[str, Any]) -> Path:
     return Path(override).expanduser().resolve() if override else CACHE / entry["destination"]
 
 
-def validate_checkout_commit(name: str, actual: str, dirty: bool = False) -> None:
+def checkout_is_overridden(name: str) -> bool:
+    """True when URDR_*_CHECKOUT points at a local tree (not the cache pin)."""
+    return bool(os.environ.get(CHECKOUT_ENV.get(name, ""), "").strip())
+
+
+def validate_checkout_commit(
+    name: str,
+    actual: str,
+    dirty: bool = False,
+    *,
+    allow_unpinned: bool = False,
+) -> None:
+    """Enforce lock pin unless allow_unpinned (local URDR_*_CHECKOUT override).
+
+    Local port development trees (e.g. shen-lua perf branch) intentionally
+    diverge from the lock; the override path records the actual HEAD in
+    evidence instead of failing the pin equality check. Dirty trees still
+    fail closed so evidence is reproducible.
+    """
+    if dirty:
+        raise GateFailure(f"{name} checkout has modified tracked files", 2)
+    if allow_unpinned:
+        return
     if actual != EXPECTED_PINS[name]:
         raise GateFailure(
             f"{name} checkout is {actual}, expected {EXPECTED_PINS[name]}",
             2,
         )
-    if dirty:
-        raise GateFailure(f"{name} checkout has modified tracked files", 2)
 
 
 def git_output(checkout: Path, *arguments: str) -> str:
@@ -516,9 +536,19 @@ def verify_checkouts(
         )
         if dirty_result.returncode > 1:
             raise GateFailure(f"cannot verify tracked state for {name}", 2)
-        validate_checkout_commit(name, actual, dirty_result.returncode == 1)
+        unpinned = name != "bifrost" and checkout_is_overridden(name)
+        validate_checkout_commit(
+            name,
+            actual,
+            dirty_result.returncode == 1,
+            allow_unpinned=unpinned,
+        )
         paths[name] = checkout
-        evidence[name] = {"commit": actual, "checkout": str(checkout)}
+        item: dict[str, Any] = {"commit": actual, "checkout": str(checkout)}
+        if unpinned:
+            item["unpinned"] = True
+            item["lock_commit"] = EXPECTED_PINS[name]
+        evidence[name] = item
     evidence["shenscript"] = {
         "commit": EXPECTED_PINS["shenscript"],
         "required": False,
