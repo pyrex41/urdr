@@ -40,7 +40,23 @@ jobs:
           cargo build --manifest-path "$deps/shen-rust/Cargo.toml" \
             --locked --release --bin shen-rust
           "$deps/shen-lua/bin/shen" -e '(version)'
-          make -C "$deps/shen-cl" fetch
+          # shen-cl master builds from Tarver's restructured S41.2 (2026-07-11),
+          # not the community ShenOSKernel-41.2 that `make fetch` downloads.
+          # The assembler builds the documented hybrid: 14 Tarver KLambda files
+          # + the three community extension-*.kl shen-cl still needs + Tarver's
+          # StLib sources. Using `fetch` here yields the community kernel, and
+          # master's boot never loads init.kl, so the build dies with an
+          # unbound *property-vector*.
+          #
+          # Feed it the pinned mirror tag rather than letting it reach
+          # shenlanguage.org: Tarver re-uploads S41.2.zip in place, so that URL
+          # changes content without changing the version string and the
+          # assembler only warns on a sha mismatch. The community half stays a
+          # download because it is an immutable GitHub release asset.
+          git clone --depth 1 --branch s41.2-pristine-20260711 \
+            https://github.com/pyrex41/shen-upstream.git "$RUNNER_TEMP/tarver"
+          ( cd "$deps/shen-cl" \
+            && scripts/assemble-tarver-kernel.sh "$RUNNER_TEMP/tarver" )
           make -C "$deps/shen-cl" precompile \
             SHEN="$deps/shen-go/.bin/shen-go"
           make -C "$deps/shen-cl" build-sbcl
