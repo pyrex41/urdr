@@ -25,8 +25,8 @@ PROBE|C5-cut-local|[[2 one] [1 one]]
 PROBE|C6-firstmatch|[a]
 PROBE|C7-naf-true|failed
 PROBE|C8-naf-false|holds
-PROBE|C9-naf-generic-true|<error>
-PROBE|C10-naf-generic-false|<error>
+PROBE|C9-naf-generic-true|failed
+PROBE|C10-naf-generic-false|holds
 PROBE|C11-naf-enumerate|[herb lisa bart]
 PROBE|D1-fact-miss|failed
 PROBE|D2-head-mismatch|failed
@@ -39,13 +39,13 @@ PROBE|D8-when-false|failed
 PROBE|D9-when-true|holds
 PROBE|D10-unify-clash|failed
 PROBE|D11-findall-of-failure-then-success|[]
-PROBE|E1-var-unbound|<error>
+PROBE|E1-var-unbound|unbound
 PROBE|E2-var-bound|bound
 PROBE|E3-alias|5
 PROBE|E4-no-capture|[p q]
 PROBE|E5-repeat-query-1|[c b a]
 PROBE|E6-repeat-query-2|[c b a]
-PROBE|E7-fresh-var-in-result|<error>
+PROBE|E7-fresh-var-in-result|unbound
 PROBE|E8-same-ground|yes
 PROBE|E9-same-clash|failed
 PROBE|E10-occurs-default|failed
@@ -78,9 +78,9 @@ PROBE|G2-append-6|[[[1 2 3 4 5 6] []] [[1 2 3 4 5] [6]] [[1 2 3 4] [5 6]] [[1 2 
 PROBE|G3-nested-findall|[[3 [0 3]] [2 [0 2]] [1 [0 1]]]
 PROBE|G4-depth-100|done
 PROBE|G4b-depth-500|done
-PROBE|G4c-depth-1000|done
-PROBE|G4d-depth-1500|done
-PROBE|G5-depth-2000|done
+PROBE|G4c-depth-1000|<error>
+PROBE|G4d-depth-1500|<error>
+PROBE|G5-depth-2000|<error>
 PROBE|G5b-depth-5000|<error>
 PROBE|G5c-depth-20000|<error>
 PROBE|G6-permutations-3|[[c b a] [c a b] [b c a] [b a c] [a c b] [a b c]]
@@ -112,5 +112,5 @@ PROBE|I11-multi-literal-query|3
 PROBE|I12-query-no-return|true
 PROBE|J1-prolog-memory|1000
 PROBE|J2-under-smallest-ceiling|done
-PROBE|J3-over-smallest-ceiling|done
+PROBE|J3-over-smallest-ceiling|<error>
 PROBES COMPLETE

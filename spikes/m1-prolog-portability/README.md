@@ -3,13 +3,42 @@
 Status: **ANALYSIS**. Nothing in this directory certifies anything. Per
 ADR 0004 Decision 3, no Prolog-derived value may reach a verdict,
 certificate, or golden digest unless a four-port fixture suite pins its
-behaviour, and that suite does not exist because the gate case **fails**.
+behaviour, and that suite does not exist.
 
-## Verdict
+## Verdict, as first recorded (Wave G)
 
-**DIVERGENCE.** Shen's integrated Prolog does *not* behave identically
+**DIVERGENCE.** Shen's integrated Prolog did *not* behave identically
 across the four required ports. Of 112 probes run on all four ports,
-**102 agree byte-for-byte and 10 diverge**, in three independent classes.
+**102 agreed byte-for-byte and 10 diverged**, in three independent classes.
+
+## Update (2026-07-29): the divergences are fixed; the conclusion is not
+
+All three classes were surface bugs in shen-lua's independent native Prolog
+engine, and all three are fixed upstream in shen-lua `dfa7950`. At the
+current pins the run is **112 of 112 identical on all four ports**.
+
+Two corrections to the evidence above, both measured rather than read:
+
+- The historical count of 10 was **8**. `results/shen-cl.txt` was stale;
+  shen-cl reports `J1-prolog-memory|1000` and errors on the capacity ladder,
+  agreeing with shen-go and shen-rust, so D-3 always had a three-port
+  majority and shen-lua's reported value was already correct.
+- `run-probes.sh` was **silently green**. It invoked `timeout`, which is
+  absent from a stock macOS, so every probe died with 127, every raw file
+  came out empty, and four empty projections compared equal — the script
+  printed `VERDICT: AGREEMENT` with `probe-lines=0`. A second bug captured
+  `$?` after `if !` had already inverted it, reporting `exit=0` for a run
+  that never happened. Both are fixed, and the script now refuses to compare
+  zero probe lines. Any AGREEMENT recorded before that fix is worthless;
+  re-run before citing it.
+
+**ADR 0004 Decision 3 still stands and the fallback is not revisited.**
+Nothing in the Shen kernel constrains a port's Prolog reimplementation, so
+agreement across the remaining 104 probes is *coincidental rather than
+structural* — a future shen-lua release can break it again with no test in
+this repository objecting. This update removes the cases where the
+coincidence had already broken; it is not evidence that the Prolog surface
+is portable. `shen/properties/query.shen` remains the supported path.
 
 Per ADR 0004 Decision 3 — "If the fixture suite reveals irreconcilable port
 divergence, the fallback is a small explicit-state query evaluator in plain

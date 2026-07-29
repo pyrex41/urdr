@@ -78,10 +78,10 @@ PROBE|G2-append-6|[[[1 2 3 4 5 6] []] [[1 2 3 4 5] [6]] [[1 2 3 4] [5 6]] [[1 2 
 PROBE|G3-nested-findall|[[3 [0 3]] [2 [0 2]] [1 [0 1]]]
 PROBE|G4-depth-100|done
 PROBE|G4b-depth-500|done
-PROBE|G4c-depth-1000|done
-PROBE|G4d-depth-1500|done
-PROBE|G5-depth-2000|done
-PROBE|G5b-depth-5000|done
+PROBE|G4c-depth-1000|<error>
+PROBE|G4d-depth-1500|<error>
+PROBE|G5-depth-2000|<error>
+PROBE|G5b-depth-5000|<error>
 PROBE|G5c-depth-20000|<error>
 PROBE|G6-permutations-3|[[c b a] [c a b] [b c a] [b a c] [a c b] [a b c]]
 PROBE|G7-permutations-4-count|24
@@ -110,7 +110,7 @@ PROBE|I9-arith|144
 PROBE|I10-arith-big|9999800001
 PROBE|I11-multi-literal-query|3
 PROBE|I12-query-no-return|true
-PROBE|J1-prolog-memory|10000
+PROBE|J1-prolog-memory|1000
 PROBE|J2-under-smallest-ceiling|done
-PROBE|J3-over-smallest-ceiling|done
+PROBE|J3-over-smallest-ceiling|<error>
 PROBES COMPLETE
