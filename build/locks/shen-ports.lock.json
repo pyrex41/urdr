@@ -13,7 +13,7 @@
     {
       "name": "shen-lua",
       "repository": "https://github.com/pyrex41/shen-lua.git",
-      "commit": "e47bbfd83f11ea5176aaa05ddec49a26c06008c4",
+      "commit": "7e2d7aefc23a966c655747663e7a95bd5eb49169",
       "destination": "shen-lua",
       "kernel_version": "41.2",
       "required": true
@@ -29,7 +29,7 @@
     {
       "name": "shen-rust",
       "repository": "https://github.com/pyrex41/shen-rust.git",
-      "commit": "bf884061ecdbe4f79f30a095b01eb89e82f0a3f6",
+      "commit": "dd8663cde5ee0ed70d5b093b9f0e62c555997af1",
       "destination": "shen-rust",
       "kernel_version": "41.2",
       "required": true

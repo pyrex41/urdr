@@ -47,9 +47,9 @@ EXPECTED_PINS = {
     "bifrost": "b0e2baa067c5f6e2047f077d531200bfc02bfa0f",
     "ratatoskr": "56d67c7a603e28e25f3a8dc4774f08741e98f1ce",
     "shen-go": "f1e845fe3cabcc20a6389e61431a4097f76967ff",
-    "shen-lua": "e47bbfd83f11ea5176aaa05ddec49a26c06008c4",
+    "shen-lua": "7e2d7aefc23a966c655747663e7a95bd5eb49169",
     "shen-cl": "dc3b599c440a94cb717e01f8c7ef674c5ff5f988",
-    "shen-rust": "bf884061ecdbe4f79f30a095b01eb89e82f0a3f6",
+    "shen-rust": "dd8663cde5ee0ed70d5b093b9f0e62c555997af1",
     "shenscript": "35b8269f75afbac9939ac0e8c7838cc4bf00d448",
 }
 
