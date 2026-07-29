@@ -4,8 +4,14 @@
     {
       "name": "bifrost",
       "repository": "https://github.com/pyrex41/bifrost.git",
-      "commit": "51d24d81f7c7a15d382f1c02238453693bb46158",
+      "commit": "b0e2baa067c5f6e2047f077d531200bfc02bfa0f",
       "destination": "bifrost"
+    },
+    {
+      "name": "ratatoskr",
+      "repository": "https://github.com/pyrex41/ratatoskr.git",
+      "commit": "56d67c7a603e28e25f3a8dc4774f08741e98f1ce",
+      "destination": "ratatoskr"
     }
   ]
 }
