@@ -24,18 +24,35 @@ EXPECTED_SHA256SUMS_SHA256 = (
     "c7ff013c101199571544c254495c2a9b67c3ee9f1383a0bc0c10c33aaa1e9e6c"
 )
 
-PORTS = {
-    "cl": (
-        Path("/Users/reuben/projects/urdr-shen-cl-41.2/bin/sbcl/shen"),
-        "script",
-    ),
-    "go": (Path("/Users/reuben/projects/shen-go/.bin/shen-go"), "script"),
+CACHE = ROOT / ".cache" / "urdr" / "dependencies"
+
+# Launcher per port, resolved against the pinned checkouts the gate verifies
+# rather than against developer trees. These paths were once absolute and
+# personal, which pointed the --ports helper at whatever happened to be on
+# that machine -- including a shen-cl predating the shen.x host extension --
+# so it could disagree with the gate while looking authoritative.
+# URDR_SHEN_*_CHECKOUT overrides match scripts/bifrost-gate's CHECKOUT_ENV.
+PORT_LAUNCHERS = {
+    "cl": ("shen-cl", "URDR_SHEN_CL_CHECKOUT", Path("bin/sbcl/shen"), "script"),
+    "go": ("shen-go", "URDR_SHEN_GO_CHECKOUT", Path(".bin/shen-go"), "script"),
     "rust": (
-        Path("/Users/reuben/projects/shen-rust/target/release/shen-rust"),
+        "shen-rust",
+        "URDR_SHEN_RUST_CHECKOUT",
+        Path("target/release/shen-rust"),
         "script",
     ),
-    "lua": (Path("/Users/reuben/projects/shen-lua/bin/shen"), "file"),
+    "lua": ("shen-lua", "URDR_SHEN_LUA_CHECKOUT", Path("bin/shen"), "file"),
 }
+
+
+def port_launcher(name: str) -> tuple[Path, str]:
+    destination, override, relative, mode = PORT_LAUNCHERS[name]
+    root = os.environ.get(override)
+    base = Path(root).expanduser().resolve() if root else CACHE / destination
+    return base / relative, mode
+
+
+PORTS = {name: port_launcher(name) for name in PORT_LAUNCHERS}
 
 
 class CodecError(ValueError):

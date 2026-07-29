@@ -5,12 +5,14 @@ from __future__ import annotations
 
 import functools
 import hashlib
+import importlib.machinery
 import importlib.util
 import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path, PurePosixPath
 from types import ModuleType
 from typing import Any, Callable
@@ -42,8 +44,9 @@ HEAVY_TIMEOUT_MIN = 300
 HEAVY_TIMEOUT_MAX = 7200
 
 EXPECTED_PINS = {
-    "bifrost": "51d24d81f7c7a15d382f1c02238453693bb46158",
-    "shen-go": "7db25b23a0b9af6f0166cb6873e6b8f56e19f0ca",
+    "bifrost": "b0e2baa067c5f6e2047f077d531200bfc02bfa0f",
+    "ratatoskr": "56d67c7a603e28e25f3a8dc4774f08741e98f1ce",
+    "shen-go": "f1e845fe3cabcc20a6389e61431a4097f76967ff",
     "shen-lua": "e47bbfd83f11ea5176aaa05ddec49a26c06008c4",
     "shen-cl": "dc3b599c440a94cb717e01f8c7ef674c5ff5f988",
     "shen-rust": "bf884061ecdbe4f79f30a095b01eb89e82f0a3f6",
@@ -223,6 +226,7 @@ EXPECTED_CASES = {
 
 CHECKOUT_ENV = {
     "bifrost": "URDR_BIFROST_CHECKOUT",
+    "ratatoskr": "URDR_RATATOSKR_CHECKOUT",
     "shen-go": "URDR_SHEN_GO_CHECKOUT",
     "shen-lua": "URDR_SHEN_LUA_CHECKOUT",
     "shen-cl": "URDR_SHEN_CL_CHECKOUT",
@@ -234,6 +238,13 @@ LAUNCHERS = {
     "shen-lua": Path("bin/shen"),
     "shen-cl": Path("bin/sbcl/shen"),
     "shen-rust": Path("target/release/shen-rust"),
+}
+
+RATATOSKR_DIR_ENV = {
+    "shen-go": "RATATOSKR_SHEN_GO_DIR",
+    "shen-lua": "RATATOSKR_SHEN_LUA_DIR",
+    "shen-cl": "RATATOSKR_SHEN_CL_DIR",
+    "shen-rust": "RATATOSKR_SHEN_RUST_DIR",
 }
 
 BIFROST_LAUNCHER_ENV = {
@@ -520,10 +531,12 @@ def git_output(checkout: Path, *arguments: str) -> str:
 def verify_checkouts(
     entries: dict[str, dict[str, Any]],
     required: tuple[str, ...],
+    shake: bool = False,
 ) -> tuple[dict[str, Path], dict[str, dict[str, Any]]]:
     paths: dict[str, Path] = {}
     evidence: dict[str, dict[str, Any]] = {}
-    for name in ("bifrost", *required):
+    tools = ("bifrost", "ratatoskr") if shake else ("bifrost",)
+    for name in (*tools, *required):
         checkout = checkout_path(name, entries[name])
         if not checkout.is_dir():
             raise GateFailure(f"missing pinned checkout for {name}: {checkout}", 2)
@@ -536,7 +549,7 @@ def verify_checkouts(
         )
         if dirty_result.returncode > 1:
             raise GateFailure(f"cannot verify tracked state for {name}", 2)
-        unpinned = name != "bifrost" and checkout_is_overridden(name)
+        unpinned = name not in ("bifrost", "ratatoskr") and checkout_is_overridden(name)
         validate_checkout_commit(
             name,
             actual,
@@ -568,6 +581,21 @@ def resolve_launchers(
         launchers[name] = path
         os.environ[BIFROST_LAUNCHER_ENV[name]] = str(path)
     return launchers
+
+
+def resolve_shake_targets(paths: dict[str, Path], required: tuple[str, ...]) -> None:
+    """Point Ratatoskr at the pinned checkouts for stage 1 and stage 2.
+
+    Without this the shaker falls back to sibling directories on disk, and the
+    lane would silently attest to whatever happened to be next to it instead of
+    the reviewed commits.
+    """
+    binary = paths["ratatoskr"] / "ratatoskr"
+    if binary.is_file() and os.access(binary, os.X_OK):
+        os.environ["BIFROST_RATATOSKR_BIN"] = str(binary)
+    os.environ["BIFROST_RATATOSKR_DIR"] = str(paths["ratatoskr"])
+    for name in required:
+        os.environ[RATATOSKR_DIR_ENV[name]] = str(paths[name])
 
 
 def resolve_heavy_timeout() -> int:
@@ -807,16 +835,56 @@ def validate_execution(
     return evidence
 
 
+def bundle_programs(destination: Path) -> dict[str, str]:
+    """Write a shakeable single-file bundle per reviewed case.
+
+    Ratatoskr is a static shaker and follows neither of the ways urdr suites
+    pull modules in, so the shake lane runs bundles rather than the suites
+    themselves; scripts/bundle-shake-program explains why. The bundles are
+    generated here rather than committed so they cannot drift from the sources
+    they are built out of. Their digests go into the evidence.
+    """
+    loader = importlib.machinery.SourceFileLoader(
+        "urdr_bundle_shake", str(ROOT / "scripts" / "bundle-shake-program")
+    )
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    if spec is None:
+        raise GateFailure("cannot load scripts/bundle-shake-program", 2)
+    bundler = importlib.util.module_from_spec(spec)
+    loader.exec_module(bundler)
+
+    digests: dict[str, str] = {}
+    for name in CASE_ORDER:
+        program = EXPECTED_CASES[name]["program"]
+        try:
+            text = bundler.bundle(program)
+        except Exception as error:  # bundler raises its own BundleError type
+            raise GateFailure(f"cannot bundle {name}: {error}", 2) from error
+        path = destination / f"{name}.shen"
+        path.write_text(text, encoding="utf-8")
+        digests[name] = sha256(path.read_bytes())
+    return digests
+
+
 def execute(
     module: ModuleType,
     required: tuple[str, ...],
+    shake: bool = False,
+    bundle_dir: Path | None = None,
 ) -> tuple[dict[str, Any], dict[str, str], dict[str, str]]:
     suite = module.build_suite_from_manifest(str(SUITE_PATH))
+    if shake:
+        # Point every case at its bundle; Bifrost shakes case["program"].
+        if bundle_dir is None:
+            raise GateFailure("shake lane requires a bundle directory", 2)
+        for case in suite["inline_cases"]:
+            case["program"] = str(bundle_dir / f"{case['name']}.shen")
     _, case_results, available, skipped, cases = module.run_suite(
         suite,
         restrict=set(required),
         include_heavy=True,
         progress=False,
+        shake=shake,
     )
     if [case.get("name") for case in cases] != list(CASE_ORDER):
         raise GateFailure("Bifrost did not load the reviewed semantic case set")
@@ -865,15 +933,28 @@ def main() -> int:
             os.environ.get("REQUIRED_IMPLS", ",".join(REQUIRED_IMPLS))
         )
         evidence["required_implementations"] = list(required)
+        shake = os.environ.get("URDR_SHAKE") == "1"
+        if shake:
+            evidence["gate"] = "urdr-m1-strict-bifrost-shake"
+            evidence["lane"] = "shake"
         heavy_timeout = resolve_heavy_timeout()
         evidence["bifrost_heavy_timeout"] = heavy_timeout
         entries = load_and_validate_locks()
         cases = validate_manifest(load_json(SUITE_PATH))
         input_evidence = verify_semantic_inputs(cases)
-        paths, dependency_evidence = verify_checkouts(entries, required)
+        paths, dependency_evidence = verify_checkouts(entries, required, shake)
         launchers = resolve_launchers(paths, required)
         module = import_bifrost(paths["bifrost"], heavy_timeout)
-        case_evidence, skipped, versions = execute(module, required)
+        if shake:
+            resolve_shake_targets(paths, required)
+            with tempfile.TemporaryDirectory(prefix="urdr-shake-") as tmp:
+                bundle_dir = Path(tmp)
+                evidence["shake_bundles"] = bundle_programs(bundle_dir)
+                case_evidence, skipped, versions = execute(
+                    module, required, shake=True, bundle_dir=bundle_dir
+                )
+        else:
+            case_evidence, skipped, versions = execute(module, required)
         evidence.update(
             {
                 "status": "PASS",
