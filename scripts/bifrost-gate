@@ -240,6 +240,14 @@ LAUNCHERS = {
     "shen-rust": Path("target/release/shen-rust"),
 }
 
+# scripts/build-ports writes the commit each launcher was built from here.
+# Verifying the pin only proved the *source* was the reviewed commit; the
+# binary that actually ran was whatever the checkout happened to contain, and
+# bootstrap updates sources in place without touching build output. A launcher
+# built before a repin therefore survived it, and a four-port PASS was once
+# recorded against a shen-go binary older than its own pin.
+BUILD_STAMP = Path(".urdr-build-stamp")
+
 RATATOSKR_DIR_ENV = {
     "shen-go": "RATATOSKR_SHEN_GO_DIR",
     "shen-lua": "RATATOSKR_SHEN_LUA_DIR",
@@ -569,6 +577,39 @@ def verify_checkouts(
     return paths, evidence
 
 
+def verify_launcher_provenance(name: str, checkout: Path) -> str:
+    """Prove the launcher was built from the commit the checkout is pinned to.
+
+    Content-addressed rather than mtime-based, to match how the checkouts
+    themselves are verified: the stamp records a commit, and a commit is a
+    hash of the tree it names. A missing stamp is a hard failure -- treating it
+    as "probably fine" is exactly the fail-open this check exists to close.
+    """
+    stamp = checkout / BUILD_STAMP
+    if not stamp.is_file():
+        raise GateFailure(
+            f"{name} launcher has no build stamp at {stamp}; "
+            f"run `make ports` so the binary is built from the pinned commit",
+            2,
+        )
+    try:
+        recorded = stamp.read_text(encoding="utf-8").strip()
+    except OSError as error:
+        raise GateFailure(f"cannot read {name} build stamp: {error}", 2) from error
+    if not FULL_SHA.match(recorded):
+        raise GateFailure(
+            f"{name} build stamp is not a full commit sha: {recorded!r}", 2
+        )
+    actual = git_output(checkout, "rev-parse", "HEAD")
+    if recorded != actual:
+        raise GateFailure(
+            f"{name} launcher was built from {recorded} but the checkout is at "
+            f"{actual}; run `make ports` to rebuild against the pin",
+            2,
+        )
+    return recorded
+
+
 def resolve_launchers(
     paths: dict[str, Path],
     required: tuple[str, ...],
@@ -578,6 +619,7 @@ def resolve_launchers(
         path = paths[name] / LAUNCHERS[name]
         if not path.is_file() or not os.access(path, os.X_OK):
             raise GateFailure(f"missing executable launcher for {name}: {path}", 2)
+        verify_launcher_provenance(name, paths[name])
         launchers[name] = path
         os.environ[BIFROST_LAUNCHER_ENV[name]] = str(path)
     return launchers
@@ -944,6 +986,14 @@ def main() -> int:
         input_evidence = verify_semantic_inputs(cases)
         paths, dependency_evidence = verify_checkouts(entries, required, shake)
         launchers = resolve_launchers(paths, required)
+        # Record which build each port actually ran, not just which commit was
+        # checked out. Without this the evidence cannot distinguish a run
+        # against the pinned code from a run against a stale binary.
+        for name in required:
+            dependency_evidence[name]["launcher"] = str(launchers[name])
+            dependency_evidence[name]["built_from"] = (
+                (paths[name] / BUILD_STAMP).read_text(encoding="utf-8").strip()
+            )
         module = import_bifrost(paths["bifrost"], heavy_timeout)
         if shake:
             resolve_shake_targets(paths, required)

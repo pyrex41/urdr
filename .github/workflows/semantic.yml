@@ -39,36 +39,21 @@ jobs:
         run: |
           set -eu
           make bootstrap
-          deps="$GITHUB_WORKSPACE/.cache/urdr/dependencies"
-          mkdir -p "$deps/shen-go/.bin"
-          go build -C "$deps/shen-go" -o "$deps/shen-go/.bin/shen-go" ./cmd/shen
-          cargo build --manifest-path "$deps/shen-rust/Cargo.toml" \
-            --locked --release --bin shen-rust
-          "$deps/shen-lua/bin/shen" -e '(version)'
-          # shen-cl master builds from Tarver's restructured S41.2 (2026-07-11),
-          # not the community ShenOSKernel-41.2 that `make fetch` downloads.
-          # The assembler builds the documented hybrid: 14 Tarver KLambda files
-          # + the three community extension-*.kl shen-cl still needs + Tarver's
-          # StLib sources. Using `fetch` here yields the community kernel, and
-          # master's boot never loads init.kl, so the build dies with an
-          # unbound *property-vector*.
+          # The build lives in scripts/build-ports, not inline here. It used to
+          # be inline, which meant `make bootstrap && make conformance` locally
+          # never rebuilt anything: bootstrap updates sources in place and
+          # leaves build output alone, so a launcher built before a repin
+          # survived it and the gate ran code that was not the reviewed commit.
+          # build-ports also stamps each launcher with the commit it came from,
+          # and the gate refuses a stamp that does not match the pin.
           #
-          # Feed it the pinned mirror tag rather than letting it reach
+          # Feed shen-cl the pinned mirror tag rather than letting it reach
           # shenlanguage.org: Tarver re-uploads S41.2.zip in place, so that URL
           # changes content without changing the version string and the
-          # assembler only warns on a sha mismatch. The community half stays a
-          # download because it is an immutable GitHub release asset.
+          # assembler only warns on a sha mismatch.
           git clone --depth 1 --branch s41.2-pristine-20260711 \
             https://github.com/pyrex41/shen-upstream.git "$RUNNER_TEMP/tarver"
-          ( cd "$deps/shen-cl" \
-            && scripts/assemble-tarver-kernel.sh "$RUNNER_TEMP/tarver" )
-          make -C "$deps/shen-cl" precompile \
-            SHEN="$deps/shen-go/.bin/shen-go"
-          make -C "$deps/shen-cl" build-sbcl
-          # Stage-1 shaker for the shake lane. The gate points Ratatoskr at
-          # this binary and at the pinned port checkouts, so the lane attests
-          # to the reviewed commits rather than to whatever is on PATH.
-          go build -C "$deps/ratatoskr" -o "$deps/ratatoskr/ratatoskr" .
+          URDR_TARVER_MIRROR="$RUNNER_TEMP/tarver" make ports
 
       - name: Run dependency-free offline checks
         env:
