@@ -5,6 +5,9 @@ on:
   push:
     branches:
       - main
+  # Nightly: the full four-target shake matrix, including shen-rust.
+  schedule:
+    - cron: "0 7 * * *"
   workflow_dispatch:
 
 permissions:
@@ -18,9 +21,9 @@ jobs:
   four-port-kernel-41-2:
     name: Bifrost go/lua/cl/rust kernel 41.2
     runs-on: ubuntu-24.04
-    # The source lane is minutes; the shake lane adds ~50 (stage-2 compilation,
-    # not execution -- one rustc on the largest bundle is ~10 by itself).
-    timeout-minutes: 150
+    # PR/push runs are ~10 minutes; the nightly full-matrix shake needs far
+    # more, because shen-rust's stage-2 build dominates it.
+    timeout-minutes: 180
     steps:
       - name: Check out Urdr
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -85,12 +88,28 @@ jobs:
           python3 -m json.tool "$RUNNER_TEMP/bifrost-evidence.json"
           exit "$rc"
 
-      # Deliberately not on pull_request: the shake lane costs ~50 minutes and
-      # would land on every push to every PR. The source lane above still gates
-      # every PR. Drop this condition if the deploy artifacts should be gated
-      # per-PR too, and expect the wall clock.
+      # Gates every PR: 12 cases across go/lua/shen-cl in ~5 minutes. shen-rust
+      # is excluded here and covered nightly below -- its stage-2 build is ~88%
+      # of a four-target run (169s per case, still ~98s warm, because the cost
+      # is compiling the generated crate rather than its dependencies), which
+      # would take this lane from 5 minutes to 52.
       - name: Run the shake lane and emit evidence
-        if: github.event_name != 'pull_request'
+        env:
+          URDR_OFFLINE: "1"
+          URDR_SHAKE: "1"
+          REQUIRED_IMPLS: shen-go,shen-lua,shen-cl
+          CARGO_NET_OFFLINE: "true"
+        run: |
+          set +e
+          python3 scripts/check-clean-tree -- sh -c \
+            'python3 scripts/conformance > "$RUNNER_TEMP/shake-evidence.json"'
+          rc=$?
+          python3 -m json.tool "$RUNNER_TEMP/shake-evidence.json"
+          exit "$rc"
+
+      # The target the fast lane leaves out. Nightly and on demand only.
+      - name: Run the full four-target shake matrix
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         env:
           URDR_OFFLINE: "1"
           URDR_SHAKE: "1"
@@ -99,7 +118,7 @@ jobs:
         run: |
           set +e
           python3 scripts/check-clean-tree -- sh -c \
-            'python3 scripts/conformance > "$RUNNER_TEMP/shake-evidence.json"'
+            'python3 scripts/conformance > "$RUNNER_TEMP/shake-full-evidence.json"'
           rc=$?
-          python3 -m json.tool "$RUNNER_TEMP/shake-evidence.json"
+          python3 -m json.tool "$RUNNER_TEMP/shake-full-evidence.json"
           exit "$rc"
