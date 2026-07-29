@@ -9,6 +9,15 @@ REQUIRED_IMPLS ?= shen-go,shen-lua,shen-cl,shen-rust
 bootstrap:
 	URDR_BOOTSTRAP_NETWORK=1 $(PYTHON) scripts/bootstrap
 
+# Build the port launchers from the pinned checkouts and stamp each with the
+# commit it came from. `bootstrap` materializes sources but leaves build output
+# alone, so without this a launcher built before a repin survives it and the
+# gate runs code that is not the reviewed commit. The gate now refuses a
+# launcher whose stamp does not match its pin, so this is a required step
+# after every bootstrap, not a convenience.
+ports:
+	sh scripts/build-ports
+
 fmt-check:
 	URDR_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1 $(PYTHON) scripts/repo-quality
 

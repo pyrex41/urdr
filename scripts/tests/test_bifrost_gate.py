@@ -8,6 +8,8 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import subprocess
+import tempfile
 import types
 import unittest
 from pathlib import Path
@@ -172,6 +174,58 @@ class PinContractTests(unittest.TestCase):
     def test_altered_checkout_commit_is_rejected(self) -> None:
         with self.assertRaisesRegex(GATE.GateFailure, "expected"):
             GATE.validate_checkout_commit("shen-go", "0" * 40)
+
+
+class LauncherProvenanceTests(unittest.TestCase):
+    """A verified pin bound the source; the binary that ran was unchecked.
+
+    `make bootstrap` updates a checkout in place and leaves build output alone,
+    so a launcher built before a repin survived it. A four-port PASS was once
+    recorded against a shen-go binary older than its own pin. Each of these
+    cases must fail closed.
+    """
+
+    def setUp(self) -> None:
+        self.checkout = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        subprocess.run(
+            ["git", "init", "-q"], cwd=self.checkout, check=True
+        )
+        subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t",
+             "commit", "-q", "--allow-empty", "-m", "base"],
+            cwd=self.checkout,
+            check=True,
+        )
+        self.head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=self.checkout,
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+        ).stdout.strip()
+        self.stamp = self.checkout / GATE.BUILD_STAMP
+
+    def test_stamp_matching_head_is_accepted(self) -> None:
+        self.stamp.write_text(f"{self.head}\n", encoding="utf-8")
+        self.assertEqual(
+            GATE.verify_launcher_provenance("shen-go", self.checkout),
+            self.head,
+        )
+
+    def test_stale_stamp_is_rejected(self) -> None:
+        # The exact shape that went undetected: a real, older commit.
+        self.stamp.write_text(f"{'a' * 40}\n", encoding="utf-8")
+        with self.assertRaisesRegex(GATE.GateFailure, "was built from"):
+            GATE.verify_launcher_provenance("shen-go", self.checkout)
+
+    def test_missing_stamp_is_rejected(self) -> None:
+        with self.assertRaisesRegex(GATE.GateFailure, "no build stamp"):
+            GATE.verify_launcher_provenance("shen-go", self.checkout)
+
+    def test_malformed_stamp_is_rejected(self) -> None:
+        self.stamp.write_text("not-a-sha\n", encoding="utf-8")
+        with self.assertRaisesRegex(GATE.GateFailure, "not a full commit sha"):
+            GATE.verify_launcher_provenance("shen-go", self.checkout)
 
 
 class ManifestMutationTests(unittest.TestCase):

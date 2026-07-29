@@ -1,0 +1,112 @@
+#!/bin/sh
+# Build the pinned port launchers and stamp each with the commit it came from.
+#
+# WHY THIS EXISTS. `make bootstrap` materializes exact source commits, and the
+# gate verifies those commits with `git rev-parse`. Nothing verified the
+# *binaries*. Bootstrap updates a checkout in place and leaves build output
+# behind, so a launcher built from an older commit survives a repin and the
+# gate happily runs it: the pin bound the source while the binary drifted free.
+# That is not a hypothetical -- a four-port PASS was recorded against a
+# shen-go binary two commits older than its pin.
+#
+# Each launcher therefore gets a `.urdr-build-stamp` next to the checkout root
+# recording the commit it was built from. scripts/bifrost-gate refuses to run a
+# launcher whose stamp is missing or does not match the pin, so a stale binary
+# now fails closed instead of silently attesting to code that never ran.
+#
+# The stamp is untracked in the dependency checkout and so does not make it
+# dirty; the gate's dirty check looks only at tracked files.
+#
+# Keep in step with .github/workflows/semantic.yml -- CI runs the same builds.
+
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+DEPS=${URDR_DEPENDENCIES:-$ROOT/.cache/urdr/dependencies}
+STAMP=.urdr-build-stamp
+
+if [ ! -d "$DEPS" ]; then
+  echo "build-ports: no dependency checkouts at $DEPS; run \`make bootstrap\` first" >&2
+  exit 2
+fi
+
+# Record the commit a checkout is currently at, next to that checkout.
+stamp_port() {
+  name=$1
+  commit=$(git -C "$DEPS/$name" rev-parse HEAD)
+  printf '%s\n' "$commit" >"$DEPS/$name/$STAMP"
+  printf '%-10s built at %s\n' "$name" "$commit"
+}
+
+# Which ports to build. Defaults to all four required ones; override to skip
+# the expensive builds while iterating (e.g. PORTS="shen-go shen-lua").
+PORTS=${PORTS:-shen-go shen-lua shen-cl shen-rust}
+want() {
+  for p in $PORTS; do
+    [ "$p" = "$1" ] && return 0
+  done
+  return 1
+}
+
+if want shen-go; then
+  mkdir -p "$DEPS/shen-go/.bin"
+  go build -C "$DEPS/shen-go" -o "$DEPS/shen-go/.bin/shen-go" ./cmd/shen
+  stamp_port shen-go
+fi
+
+if want shen-rust; then
+  cargo build --manifest-path "$DEPS/shen-rust/Cargo.toml" \
+    --locked --release --bin shen-rust
+  stamp_port shen-rust
+fi
+
+if want shen-lua; then
+  # shen-lua runs from source; the launcher is a script, so there is nothing to
+  # compile. Exercise it once so a broken checkout fails here rather than
+  # midway through a suite.
+  "$DEPS/shen-lua/bin/shen" -e '(version)' >/dev/null
+  stamp_port shen-lua
+fi
+
+if want shen-cl; then
+  # shen-cl master builds from Tarver's restructured S41.2, not the community
+  # ShenOSKernel-41.2 that `make fetch` downloads: master's boot never loads
+  # init.kl, so the community kernel dies with an unbound *property-vector*.
+  # assemble-tarver-kernel.sh builds the documented hybrid.
+  #
+  # Feed it a local mirror checkout rather than letting it reach
+  # shenlanguage.org -- Tarver re-uploads S41.2.zip in place, so that URL
+  # changes content without changing the version string and the assembler only
+  # warns on a sha mismatch.
+  TARVER=${URDR_TARVER_MIRROR:-}
+  if [ -z "$TARVER" ]; then
+    for candidate in \
+      "$ROOT/../shen-upstream-mirror" \
+      "$ROOT/../shen-upstream"; do
+      if [ -d "$candidate" ]; then
+        TARVER=$candidate
+        break
+      fi
+    done
+  fi
+  if [ -z "$TARVER" ] || [ ! -d "$TARVER" ]; then
+    echo "build-ports: shen-cl needs Tarver's S41.2 sources." >&2
+    echo "             Set URDR_TARVER_MIRROR to a checkout of" >&2
+    echo "             pyrex41/shen-upstream at s41.2-pristine-20260711." >&2
+    exit 2
+  fi
+  ( cd "$DEPS/shen-cl" && scripts/assemble-tarver-kernel.sh "$TARVER" )
+  make -C "$DEPS/shen-cl" precompile SHEN="$DEPS/shen-go/.bin/shen-go"
+  make -C "$DEPS/shen-cl" build-sbcl
+  stamp_port shen-cl
+fi
+
+# Stage-1 shaker for the shake lane. Built unconditionally: the gate points
+# Ratatoskr at this binary and at the pinned checkouts so the lane attests to
+# the reviewed commits rather than to whatever is on PATH.
+if [ -d "$DEPS/ratatoskr" ]; then
+  go build -C "$DEPS/ratatoskr" -o "$DEPS/ratatoskr/ratatoskr" .
+  stamp_port ratatoskr
+fi
+
+echo "build-ports: launchers built and stamped"
