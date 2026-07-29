@@ -18,7 +18,9 @@ jobs:
   four-port-kernel-41-2:
     name: Bifrost go/lua/cl/rust kernel 41.2
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    # The source lane is minutes; the shake lane adds ~50 (stage-2 compilation,
+    # not execution -- one rustc on the largest bundle is ~10 by itself).
+    timeout-minutes: 150
     steps:
       - name: Check out Urdr
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -60,6 +62,10 @@ jobs:
           make -C "$deps/shen-cl" precompile \
             SHEN="$deps/shen-go/.bin/shen-go"
           make -C "$deps/shen-cl" build-sbcl
+          # Stage-1 shaker for the shake lane. The gate points Ratatoskr at
+          # this binary and at the pinned port checkouts, so the lane attests
+          # to the reviewed commits rather than to whatever is on PATH.
+          go build -C "$deps/ratatoskr" -o "$deps/ratatoskr/ratatoskr" .
 
       - name: Run dependency-free offline checks
         env:
@@ -77,4 +83,23 @@ jobs:
             'python3 scripts/conformance > "$RUNNER_TEMP/bifrost-evidence.json"'
           rc=$?
           python3 -m json.tool "$RUNNER_TEMP/bifrost-evidence.json"
+          exit "$rc"
+
+      # Deliberately not on pull_request: the shake lane costs ~50 minutes and
+      # would land on every push to every PR. The source lane above still gates
+      # every PR. Drop this condition if the deploy artifacts should be gated
+      # per-PR too, and expect the wall clock.
+      - name: Run the shake lane and emit evidence
+        if: github.event_name != 'pull_request'
+        env:
+          URDR_OFFLINE: "1"
+          URDR_SHAKE: "1"
+          REQUIRED_IMPLS: shen-go,shen-lua,shen-cl,shen-rust
+          CARGO_NET_OFFLINE: "true"
+        run: |
+          set +e
+          python3 scripts/check-clean-tree -- sh -c \
+            'python3 scripts/conformance > "$RUNNER_TEMP/shake-evidence.json"'
+          rc=$?
+          python3 -m json.tool "$RUNNER_TEMP/shake-evidence.json"
           exit "$rc"

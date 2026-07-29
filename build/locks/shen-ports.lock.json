@@ -5,7 +5,7 @@
     {
       "name": "shen-go",
       "repository": "https://github.com/pyrex41/shen-go.git",
-      "commit": "7db25b23a0b9af6f0166cb6873e6b8f56e19f0ca",
+      "commit": "f1e845fe3cabcc20a6389e61431a4097f76967ff",
       "destination": "shen-go",
       "kernel_version": "41.2",
       "required": true
