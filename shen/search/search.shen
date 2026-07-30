@@ -239,16 +239,21 @@
 
 \\ Convert a software integer (or already-small number) to a host small
 \\ natural for list indexing. Bounds in this module are scenario-scale.
+\\ Magnitude decoding is delegated to urdr.int.small-of so the
+\\ little-endian limb order of ADR 0003 is honoured in exactly one
+\\ place; anything outside its host-safe window clamps to 0, matching
+\\ this module's treatment of every other malformed index.
 (define urdr.search.small-of
   N -> N where (and (number? N) (>= N 0))
-  [big 1 Mag] -> (urdr.search.mag-small Mag 0)
+  [big 1 Mag] ->
+    (urdr.search.small-of-ok (urdr.int.small-of [big 1 Mag]))
   [big -1 _] -> 0
   [big 0 _] -> 0
   _ -> 0)
 
-(define urdr.search.mag-small
-  [] Acc -> Acc
-  [D | Ds] Acc -> (urdr.search.mag-small Ds (+ (* Acc 10000) D)))
+(define urdr.search.small-of-ok
+  [ok N] -> N
+  _ -> 0)
 
 \\ ---------------------------------------------------------------
 \\ Menu construction

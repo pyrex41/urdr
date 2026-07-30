@@ -6,6 +6,7 @@
      SEED|NAME|MATCH|HEX        same seed => identical digests
      MUT|NAME|DIFFERENT         different seeds diverge (optional)
      REPLAY|NAME|CODE           withheld entry fails with divergence
+     MUT|small-of|OK            software-integer field decoding
      FAIL|NAME|DETAIL           internal self-check failure
      GRAMMAR CASES: N
      ALL PASS
@@ -294,6 +295,25 @@
   _ -> (ug.fail "fragment" "expand-error"))
 
 \\ ---------------------------------------------------------------
+\\ Case group 6: field decoding of software integers (regression:
+\\ ADR 0003 limbs are little-endian, so [big 1 [5000 1]] is 15000,
+\\ not 50000001; sizes >= 10000 must survive the decode).
+\\ ---------------------------------------------------------------
+
+(define ug.small-of-case
+  -> (/. Unit
+       (let Topo (urdr.grammar.read-topo
+                   [record
+                     [[(ug.k "size") (urdr.grammar.big 15000)]
+                      [(ug.k "link-mode") [symbol (ug.k "line")]]]])
+            OkTopo (= Topo [topo 15000 line])
+            OkRaw (= (urdr.grammar.small-of [big 1 [5000 1]]) 15000)
+            Ok (and OkTopo OkRaw)
+         (do
+           (output "MUT|small-of|~A~%" Ok)
+           (if Ok true (ug.fail "small-of" "wrong-decode"))))))
+
+\\ ---------------------------------------------------------------
 \\ Driver
 \\ ---------------------------------------------------------------
 
@@ -311,7 +331,8 @@
          (ug.frag-case)
          (ug.replay-ok-case)
          (ug.replay-case)]
-        (ug.reject-cases)]))
+        (ug.reject-cases)
+        [(ug.small-of-case)]]))
 
 (define ug.run
   -> (let Cases (ug.cases)
