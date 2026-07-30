@@ -376,14 +376,20 @@
        [(urdr.search.n k-time) At]]]
   _ -> [null])
 
-\\ A reducer input that schedules the same choice menu the strategy just
-\\ decided among. Compatible with urdr.replay.write / urdr.replay.run:
-\\ the world will re-draw from its own streams on reduce; the search
-\\ record is the decision-level audit of what explore selected.
+\\ A reducer input that schedules the decision the strategy just made,
+\\ in the world's SELECTED choice form (ADR 0007 D2): menu, selected
+\\ alternative, and the PRNG coordinates of the strategy's draw. The
+\\ world applies the recorded selection without re-drawing, so explore's
+\\ transcripts are pinned by construction -- a transcript survives a
+\\ strategy change, and replaying it cannot perturb world streams. The
+\\ coordinates travel verbatim as evidence of the driver-space draw;
+\\ the search record remains the decision-level audit of the same fact.
 (define urdr.search.schedule-input
-  [choice-record _ At _ Alternatives _ _ _] Subsystem Actor Purpose ->
+  [choice-record _ At _ Alternatives Selected _ Coordinates]
+  Subsystem Actor Purpose ->
     [schedule At choice
-      [choice Subsystem Actor Purpose Alternatives]]
+      [choice Subsystem Actor Purpose Alternatives Selected
+        Coordinates]]
   _ _ _ _ -> [error (urdr.search.n c-record-shape) [null]])
 
 \\ ---------------------------------------------------------------

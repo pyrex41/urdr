@@ -263,10 +263,66 @@
 \\ Ordering is checked after event-valid? has proved encodability, in
 \\ the same reject-before-any-state-change phase, but under its own
 \\ stable code so an unordered menu is distinguishable from a
-\\ malformed one.
+\\ malformed one. Both choice forms are ordered by the same rule: the
+\\ selected form still identifies alternatives positionally in every
+\\ artifact that renders the menu, so permutation freedom would be the
+\\ same host-order hazard either way.
 (define urdr.world.event-order-valid?
   choice [choice _ _ _ Alternatives] ->
     (urdr.world.alternatives-ascending? Alternatives)
+  choice [choice _ _ _ Alternatives _ _] ->
+    (urdr.world.alternatives-ascending? Alternatives)
+  _ _ -> true)
+
+\\ A recorded PRNG coordinate travelling inside a selected choice
+\\ (ADR 0007 D2) must be exactly what urdr.prng.sample emits:
+\\ the urdr-sha256-counter-v1 algorithm and fields the PRNG's own
+\\ constructor door accepts. Re-using urdr.prng.coordinate as the
+\\ validator means the transcript can never carry a coordinate the
+\\ PRNG could not have produced, without this module restating the
+\\ PRNG's field rules.
+(define urdr.world.coordinate-shape?
+  [coordinate urdr-sha256-counter-v1
+    Seed Subsystem Actor Purpose Counter BlockIndex] ->
+    (= (hd (urdr.prng.coordinate
+             Seed Subsystem Actor Purpose Counter BlockIndex))
+       ok)
+  _ -> false)
+
+(define urdr.world.coordinates-shape?
+  [] -> true
+  [Coordinate | Rest] ->
+    (and (urdr.world.coordinate-shape? Coordinate)
+         (urdr.world.coordinates-shape? Rest))
+  _ -> false)
+
+\\ Membership is by canonical-encoding equality — the only value
+\\ identity this kernel recognises (ADR 0002) — never host equality of
+\\ the parsed forms. Encodability of the selection and of every
+\\ alternative was proved by event-valid? before this runs, so the
+\\ encodings exist. The selection's encoding is computed once.
+(define urdr.world.selection-member?
+  Selected Alternatives ->
+    (urdr.world.selection-member-enc
+      (hd (tl (urdr.canonical.encode-payload Selected)))
+      Alternatives))
+
+(define urdr.world.selection-member-enc
+  _ [] -> false
+  Encoded [Alternative | Rest] ->
+    (or (= Encoded
+           (hd (tl (urdr.canonical.encode-payload Alternative))))
+        (urdr.world.selection-member-enc Encoded Rest)))
+
+\\ The membership door for the selected choice form (ADR 0007 D2): a
+\\ selection that is not an element of its own menu is rejected before
+\\ any state change, under its own stable code, at the same door that
+\\ enforces encodability and ordering. Dispatch relies on this proof —
+\\ pending events only enter through this door — exactly as routed
+\\ deliveries rely on the routes-check proof.
+(define urdr.world.event-selection-valid?
+  choice [choice _ _ _ Alternatives Selected _] ->
+    (urdr.world.selection-member? Selected Alternatives)
   _ _ -> true)
 
 (define urdr.world.event-valid?
@@ -281,6 +337,20 @@
          (and (urdr.world.canonical-list-valid? Alternatives)
               (urdr.world.choice-path-valid?
                 Seed Subsystem Actor Purpose)))
+  \\ Selected form (ADR 0007 D2): the same validations as the drawn
+  \\ form — the PRNG path must still be well-formed even though no
+  \\ draw will happen, so a selected transcript never smuggles in a
+  \\ path the drawn form would have refused — plus encodability of the
+  \\ selection and shape of the recorded coordinates. Membership is a
+  \\ separate door (event-selection-valid?) with its own stable code.
+  Seed choice
+  [choice Subsystem Actor Purpose Alternatives Selected Coordinates] ->
+    (and (urdr.world.nonempty? Alternatives)
+         (and (urdr.world.canonical-list-valid? Alternatives)
+              (and (urdr.world.canonical-valid? Selected)
+                   (and (urdr.world.coordinates-shape? Coordinates)
+                        (urdr.world.choice-path-valid?
+                          Seed Subsystem Actor Purpose)))))
   Seed component [component-input Name Value] ->
     (and (urdr.component.name-valid? Name)
          (urdr.world.canonical-valid? Value))
@@ -365,6 +435,15 @@
                       [99 104 111 105 99 101 45 97 108 116 101 114 110
                        97 116 105 118 101 115 45 111 114 100 101 114]
                       [null])
+                (if (not (urdr.world.event-selection-valid? Kind Payload))
+                    (urdr.world.error
+                      [world/v2
+                        Time NextId Pending Seed Streams
+                        Transcript Verdicts Components Facts Routing]
+                      [99 104 111 105 99 101 45 115 101 108 101 99 116
+                       105 111 110 45 110 111 116 45 109 101 109 98 101
+                       114]
+                      [null])
                     (let Event [event NextId At Kind Payload]
                          Next (hd (tl
                                 (urdr.time.successor NextId)))
@@ -382,7 +461,7 @@
                           Facts
                           Routing]
                         []
-                        []]))))))))
+                        []])))))))))
 
 \\ Advancing to a strictly later logical time opens a fresh routed-
 \\ delivery budget; same-time advances (several events at one instant)
@@ -474,6 +553,10 @@
   [choice Subsystem Actor Purpose Alternatives] ->
     (urdr.world.choose
       World Id At Subsystem Actor Purpose Alternatives)
+  World Id At choice
+  [choice Subsystem Actor Purpose Alternatives Selected Coordinates] ->
+    (urdr.world.apply-selected
+      World Id At Alternatives Selected Coordinates)
   World Id At component [component-input Name Value] ->
     (urdr.world.component-step World Id At Name Value)
   World _ _ _ _ ->
@@ -749,6 +832,31 @@
   [_ | Rest] Index ->
     (urdr.world.nth-big
       Rest (urdr.int.raw.subtract Index (urdr.int.one))))
+
+\\ Selected-form dispatch (ADR 0007 D2): the decision transcript, not
+\\ the PRNG, is the replay authority. The draw already happened when
+\\ the decision was made — in driver space, on the driver's stream —
+\\ so dispatch applies the recorded selection WITHOUT drawing: no
+\\ urdr.prng call, and no per-path stream counter advance. Advancing a
+\\ counter here would perturb every later draw on the same path, which
+\\ is exactly the replay non-interference the drawn form's path
+\\ isolation guarantees. The recorded Coordinates are embedded in the
+\\ emitted choice record verbatim: they are evidence of the original
+\\ draw, not something this dispatch can re-derive (the originating
+\\ stream may not even be a world stream), so re-deriving or repairing
+\\ them would make the transcript a witness of less than the run.
+\\ Validity — encodability, menu order, PRNG path, coordinate shape,
+\\ and membership of Selected in Alternatives — was proved at the
+\\ schedule door before the event entered the pending queue; a
+\\ non-member selection fails closed there (choice-selection-not-
+\\ member) before any state change.
+(define urdr.world.apply-selected
+  World Id At Alternatives Selected Coordinates ->
+    [reduction
+      World
+      []
+      [(urdr.world.choice-value
+         Id At Alternatives Selected Coordinates)]])
 
 (define urdr.world.choose
   [world/v2

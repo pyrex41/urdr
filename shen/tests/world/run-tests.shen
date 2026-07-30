@@ -299,6 +299,107 @@
       Fixture
       [[symbol [98 101 116 97]] [symbol [98 101 116 97]]]))
 
+\\ Pinned selections (ADR 0007 D2): the round-trip theorem for the
+\\ selected choice form. Draw a choice as today, then in a fresh world
+\\ schedule the SELECTED form carrying that draw's selection and
+\\ coordinates. The two dispatches must emit byte-identical choice
+\\ records -- the transcript, not the PRNG, is the replay authority --
+\\ while the selected dispatch leaves every per-path stream counter
+\\ untouched (the draw already happened in driver space; replaying it
+\\ must not perturb other draws on the same path). Both record digests
+\\ are printed so the equality is pinned in the golden, not merely
+\\ asserted.
+(define uwt.selected-inputs
+  Fixture Selected Coordinates ->
+    [[schedule (uwt.late Fixture) choice
+       [choice (uwt.subsystem) (uwt.actor-b) (uwt.purpose)
+         (uwt.alternatives) Selected Coordinates]]
+     [advance-to-next-event]])
+
+\\ The same draw urdr.world.choose performs for actor-b at counter 0,
+\\ made outside the world: the selection and coordinates a driver
+\\ records into a pinned transcript.
+(define uwt.drawn-sample
+  -> (urdr.prng.sample
+       (hd (tl (urdr.prng.stream
+                 (uwt.seed) (uwt.subsystem) (uwt.actor-b)
+                 (uwt.purpose) (urdr.int.zero))))
+       (urdr.world.list-count (uwt.alternatives))))
+
+(define uwt.selected-replay
+  Fixture [ok [sample Index _ Coordinates]] ->
+    (urdr.world.replay
+      (uwt.initial Fixture)
+      (uwt.selected-inputs
+        Fixture
+        (urdr.world.nth-big (uwt.alternatives) Index)
+        Coordinates))
+  _ _ -> none)
+
+(define uwt.drawn-replay
+  Fixture ->
+    (urdr.world.replay
+      (uwt.initial Fixture)
+      [[schedule (uwt.late Fixture) choice (uwt.choice (uwt.actor-b))]
+       [advance-to-next-event]]))
+
+(define uwt.first-choice
+  Replay ->
+    (hd (urdr.world.reduction-choices
+          (uwt.nth 1 (urdr.world.replay-reductions Replay)))))
+
+(define uwt.record-digest-hex
+  Record ->
+    (uwt.record-digest-hex-of (urdr.canonical.encode-payload Record)))
+
+(define uwt.record-digest-hex-of
+  [ok Bytes] ->
+    (hd (tl (urdr.bytes.hex (hd (tl (urdr.sha256 Bytes))))))
+  _ -> "unencodable")
+
+(define uwt.selected-roundtrip?
+  Fixture ->
+    (let Drawn (uwt.drawn-replay Fixture)
+         Selected (uwt.selected-replay Fixture (uwt.drawn-sample))
+         DrawnRec (uwt.first-choice Drawn)
+         SelectedRec (uwt.first-choice Selected)
+      (do
+        (output "WORLD-CHOICE-DRAWN ~A~%"
+          (uwt.record-digest-hex DrawnRec))
+        (output "WORLD-CHOICE-SELECTED ~A~%"
+          (uwt.record-digest-hex SelectedRec))
+        (and (= DrawnRec SelectedRec)
+             (and (= (urdr.world.streams
+                       (urdr.world.replay-world Selected))
+                     [])
+                  (= (urdr.world.streams
+                       (urdr.world.replay-world Drawn))
+                     [[path (uwt.subsystem) (uwt.actor-b)
+                        (uwt.purpose) (uwt.big 1)]]))))))
+
+\\ A selection that is not a member of its own menu (by canonical
+\\ encoding) is refused at the schedule door, before any state change,
+\\ under its own stable code.
+(define uwt.selection-code
+  -> [99 104 111 105 99 101 45 115 101 108 101 99 116 105 111 110 45
+      110 111 116 45 109 101 109 98 101 114])
+
+(define uwt.selected-not-member-rejected?
+  Fixture ->
+    (let W0 (uwt.initial Fixture)
+         Reduction (urdr.world.reduce
+                     W0
+                     [schedule (uwt.base Fixture) choice
+                       [choice
+                         (uwt.subsystem)
+                         (uwt.actor-a)
+                         (uwt.purpose)
+                         (uwt.alternatives)
+                         [symbol [100 101 108 116 97]]
+                         []]])
+      (and (uwt.error? Reduction (uwt.selection-code))
+           (= (urdr.world.reduction-world Reduction) W0))))
+
 \\ Modeled-component fixtures (ADR 0004 Decision 1). One well-behaved
 \\ component and one variant per banned authority, each of which must be
 \\ rejected fail-closed rather than repaired.
@@ -710,7 +811,7 @@
           (do
             (output "WORLD-TRACE ~A~%" Hex)
             (output "WORLD-COMPONENT-TRACE ~A~%" ComponentHex)
-            (output "WORLD TESTS: 22/22 PASS~%")
+            (output "WORLD TESTS: 24/24 PASS~%")
             (output "ALL PASS~%")
             true))
         (do
@@ -739,6 +840,8 @@
                (uwt.invalid-event? Fixture))
           (and (uwt.unordered-choice-rejected? Fixture)
                (uwt.duplicate-choice-rejected? Fixture))
+          (uwt.selected-roundtrip? Fixture)
+          (uwt.selected-not-member-rejected? Fixture)
           (= (length (uwt.creductions Components)) 4)
           (uwt.component-run? Components)
           (uwt.component-isolation? Components)

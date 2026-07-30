@@ -978,9 +978,12 @@
   _ _ [error Code Detail] -> [error Code Detail]
   _ _ _ -> [error (urdr.grammar.n c-menu) [null]])
 
-\\ Build the decision transcript: for each choice, schedule the menu
-\\ then advance. Order matches Wave F explore BUILD convention so
-\\ urdr.replay.run accepts the transcript on a fixture world.
+\\ Build the decision transcript: for each choice, schedule the pinned
+\\ decision (selected form, ADR 0007 D2 -- urdr.search.schedule-input
+\\ carries the selection and its coordinates, so replay consumes the
+\\ recorded decision instead of re-drawing) then advance. Order matches
+\\ the Wave F explore BUILD convention so urdr.replay.run accepts the
+\\ transcript on a fixture world.
 (define urdr.grammar.transcript-of
   Choices -> (urdr.grammar.transcript-h Choices []))
 

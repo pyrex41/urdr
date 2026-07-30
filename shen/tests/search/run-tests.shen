@@ -184,10 +184,11 @@
 \\ Failure is present iff the transcript schedules a choice whose
 \\ alternatives include the inject alternative AND the run is the
 \\ "found" path: we detect inject by looking for a fault-purpose choice
-\\ that was built when inject was selected. Because the decision
-\\ transcript only carries the menu (not the selection), the explore
-\\ BUILD function embeds the selection as a command record tagged with
-\\ shrink-class, and the oracle reads that.
+\\ that was built when inject was selected. The choice entries built by
+\\ urdr.search.schedule-input now pin the selection themselves
+\\ (ADR 0007 D2), but the oracle keeps reading the command markers the
+\\ BUILD function emits: an oracle over marker commands stays valid for
+\\ hand-built drawn-form transcripts (ues.failing-transcript) too.
 \\ ---------------------------------------------------------------
 
 \\ Witness is the properties-layer canonical form: a bare symbol
@@ -341,6 +342,43 @@
   -> (hd (tl (urdr.certificate.failure-signature
                (ues.fail-verdicts)))))
 
+\\ The same failing path with the choice entries PINNED (selected form,
+\\ ADR 0007 D2). Shrink classifies choice entries by purpose; the pinned
+\\ arity must classify exactly like the drawn one, or the fault/delay
+\\ passes would skip pinned entries and minimization would stall at the
+\\ un-deletable choices. The coordinate is a hand-pinned well-formed
+\\ urdr-sha256-counter-v1 tuple: coordinates are evidence carried
+\\ verbatim, so replay never re-derives them.
+(define ues.coordinate
+  -> [coordinate urdr-sha256-counter-v1
+       (ues.seed) (ues.sub) (ues.actor) (ues.k "fault")
+       (urdr.int.zero) (urdr.int.zero)])
+
+(define ues.pinned-choice-input
+  Purpose Alts Selected ->
+    [schedule (urdr.int.zero) choice
+      [choice (ues.sub) (ues.actor) (ues.k Purpose) Alts Selected
+        [(ues.coordinate)]]])
+
+(define ues.pinned-failing-transcript
+  -> [(ues.pinned-choice-input "fault" (ues.fault-alts)
+        (ues.alt "fault" "inject"))
+      (ues.advance)
+      (ues.cmd "inject" "fault")
+      (ues.advance)
+      (ues.pinned-choice-input "schedule" (ues.color-alts)
+        (ues.alt "other" "blue"))
+      (ues.advance)
+      (ues.cmd "blue" "schedule")
+      (ues.advance)
+      (ues.pinned-choice-input "delay" (ues.delay-alts)
+        (ues.alt "timing" "d0"))
+      (ues.advance)
+      (ues.cmd "d0" "delay")
+      (ues.advance)
+      (ues.bump 1)
+      (ues.advance)])
+
 \\ ---------------------------------------------------------------
 \\ Case group 1: choice records
 \\ ---------------------------------------------------------------
@@ -465,6 +503,34 @@
   Before [error Code _] -> (ues.fail "shrink" Code)
   Before _ -> (ues.fail "shrink" "minimize-error"))
 
+\\ Minimizing the pinned variant must land on the same minimum as the
+\\ drawn one: pinned choice entries classify by purpose (shrink.shen's
+\\ selected-arity clause) and are deleted exactly like drawn entries.
+(define ues.shrink-pinned-case
+  -> (/. Unit
+       (let Before (ues.count (ues.pinned-failing-transcript))
+            Min (urdr.shrink.minimize
+                  (ues.original-sig)
+                  (/. T (ues.eval-transcript T))
+                  (ues.pinned-failing-transcript))
+         (ues.shrink-pinned-h Before Min))))
+
+(define ues.shrink-pinned-h
+  Before [ok After] ->
+    (let Alen (ues.count After)
+         Still (ues.has-inject? After)
+         OkSig (urdr.shrink.accepts?
+                 (ues.original-sig)
+                 (hd (tl (ues.eval-transcript After))))
+      (do
+        (output "SHRINK|pinned|~A|~A|~A~%"
+          Before Alen (and Still OkSig (< Alen Before)))
+        (if (and Still OkSig (< Alen Before))
+            true
+            (ues.fail "shrink-pinned" "did-not-minimize"))))
+  Before [error Code _] -> (ues.fail "shrink-pinned" Code)
+  Before _ -> (ues.fail "shrink-pinned" "minimize-error"))
+
 \\ ---------------------------------------------------------------
 \\ Case group 5: mutation that drops the fault is rejected
 \\ ---------------------------------------------------------------
@@ -527,6 +593,35 @@
   Transcript [error Code Detail] ->
     (ues.fail "replay" Code)
   Transcript _ -> (ues.fail "replay" "run-error"))
+
+\\ Explore transcripts are pinned by construction (ADR 0007 D2):
+\\ urdr.search.schedule-input emits the SELECTED choice form, carrying
+\\ the strategy's selection and PRNG coordinates. Replaying the found
+\\ transcript through the world proves the pinned entries pass the
+\\ schedule door (membership included) and dispatch without drawing.
+(define ues.replay-explore-case
+  -> (/. Unit
+       (ues.replay-explore-h
+         (urdr.search.explore
+           (ues.seed) 16 baseline (ues.menus)
+           (/. Cs (ues.build-transcript Cs))
+           (/. T (ues.eval-transcript T))))))
+
+(define ues.replay-explore-h
+  [ok Result] ->
+    (ues.replay-explore-run
+      (urdr.replay.run
+        (ues.world) (urdr.search.result-transcript Result)))
+  _ -> (ues.fail "replay-explore" "explore-error"))
+
+(define ues.replay-explore-run
+  [ok Run] ->
+    (do
+      (output "REPLAY|explore|true|~A~%"
+        (ues.hex (urdr.replay.run-transcript-root Run)))
+      true)
+  [error Code _] -> (ues.fail "replay-explore" Code)
+  _ -> (ues.fail "replay-explore" "run-error"))
 
 \\ Also pin that the original failing transcript replays.
 (define ues.replay-orig-case
@@ -640,8 +735,10 @@
         (ues.strat-cases)
         (ues.explore-cases)
         [(ues.shrink-case)
+         (ues.shrink-pinned-case)
          (ues.mut-case)
          (ues.replay-case)
+         (ues.replay-explore-case)
          (ues.replay-orig-case)
          (ues.seed-case)
          (ues.seed-boundary-case)

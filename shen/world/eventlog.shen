@@ -241,6 +241,10 @@
     [112 114 111 112 101 114 116 121]
   k-alternatives ->
     [97 108 116 101 114 110 97 116 105 118 101 115]
+  k-coordinates ->
+    [99 111 111 114 100 105 110 97 116 101 115]
+  k-selected ->
+    [115 101 108 101 99 116 101 100]
   k-purpose ->
     [112 117 114 112 111 115 101]
   k-name ->
@@ -527,6 +531,27 @@
          [(urdr.eventlog.n k-alternatives) [list Alternatives]]
          [(urdr.eventlog.n k-purpose) [bytes Purpose]]
          [(urdr.eventlog.n k-subsystem) [bytes Subsystem]]]]]
+  \\ Selected choice form (ADR 0007 D2): additive — the selected and
+  \\ coordinates keys appear only when the entry carries a selection,
+  \\ so every menu-only transcript written before this form existed
+  \\ still reads back unchanged. Keys ascend: actor < alternatives <
+  \\ coordinates < purpose < selected < subsystem. Coordinates are
+  \\ rendered with urdr.world.coordinate-value, the same projection the
+  \\ emitted choice record uses, so the transcript and the event stream
+  \\ cannot drift on that field.
+  choice
+  [choice Subsystem Actor Purpose Alternatives Selected Coordinates] ->
+    (if (urdr.world.coordinates-shape? Coordinates)
+        [ok
+          [record
+            [[(urdr.eventlog.n k-actor) [bytes Actor]]
+             [(urdr.eventlog.n k-alternatives) [list Alternatives]]
+             [(urdr.eventlog.n k-coordinates)
+              [list (urdr.world.coordinates-value Coordinates)]]
+             [(urdr.eventlog.n k-purpose) [bytes Purpose]]
+             [(urdr.eventlog.n k-selected) Selected]
+             [(urdr.eventlog.n k-subsystem) [bytes Subsystem]]]]]
+        [error eventlog-payload-shape [null]])
   component [component-input Name Value] ->
     [ok
       [record
@@ -552,12 +577,67 @@
      [[112 117 114 112 111 115 101] [bytes Purpose]]
      [[115 117 98 115 121 115 116 101 109] [bytes Subsystem]]]] ->
     [ok [choice Subsystem Actor Purpose Alternatives]]
+  \\ Selected form: the coordinates are read back into the exact
+  \\ [coordinate ...] tuples urdr.prng.sample produced, so
+  \\ write is a total inverse of read on every transcript the reducer
+  \\ accepts (the schedule door only admits urdr-sha256-counter-v1
+  \\ coordinates, which is the one algorithm this reader restores).
+  choice
+  [record
+    [[[97 99 116 111 114] [bytes Actor]]
+     [[97 108 116 101 114 110 97 116 105 118 101 115]
+      [list Alternatives]]
+     [[99 111 111 114 100 105 110 97 116 101 115] [list Coordinates]]
+     [[112 117 114 112 111 115 101] [bytes Purpose]]
+     [[115 101 108 101 99 116 101 100] Selected]
+     [[115 117 98 115 121 115 116 101 109] [bytes Subsystem]]]] ->
+    (urdr.eventlog.selected-of
+      Subsystem Actor Purpose Alternatives Selected
+      (urdr.eventlog.coordinates-of Coordinates []))
   component
   [record
     [[[110 97 109 101] [bytes Name]]
      [[118 97 108 117 101] Value]]] ->
     [ok [component-input Name Value]]
   _ _ -> [error eventlog-payload-shape [null]])
+
+(define urdr.eventlog.selected-of
+  _ _ _ _ _ [error Code Detail] -> [error Code Detail]
+  Subsystem Actor Purpose Alternatives Selected [ok Coordinates] ->
+    [ok [choice Subsystem Actor Purpose Alternatives Selected
+          Coordinates]])
+
+\\ The inverse of urdr.world.coordinate-value; key octets are exactly
+\\ the ones that projection writes. The algorithm symbol is matched
+\\ literally (urdr-sha256-counter-v1): a coordinate under any other
+\\ algorithm never came from this engine's PRNG and is a shape error,
+\\ never a repair.
+(define urdr.eventlog.coordinate-of
+  [record
+    [[[97 99 116 111 114] [bytes Actor]]
+     [[97 108 103 111 114 105 116 104]
+      [symbol [117 114 100 114 45 115 104 97 50 53 54 45
+               99 111 117 110 116 101 114 45 118 49]]]
+     [[98 108 111 99 107 45 105 110 100 101 120] BlockIndex]
+     [[99 111 117 110 116 101 114] Counter]
+     [[112 117 114 112 111 115 101] [bytes Purpose]]
+     [[115 101 101 100] [bytes Seed]]
+     [[115 117 98 115 121 115 116 101 109] [bytes Subsystem]]]] ->
+    [ok [coordinate urdr-sha256-counter-v1
+          Seed Subsystem Actor Purpose Counter BlockIndex]]
+  _ -> [error eventlog-payload-shape [null]])
+
+(define urdr.eventlog.coordinates-of
+  [] Acc -> [ok (urdr.eventlog.rev Acc)]
+  [Value | Rest] Acc ->
+    (urdr.eventlog.coordinates-of-step
+      (urdr.eventlog.coordinate-of Value) Rest Acc)
+  _ _ -> [error eventlog-payload-shape [null]])
+
+(define urdr.eventlog.coordinates-of-step
+  [error Code Detail] _ _ -> [error Code Detail]
+  [ok Coordinate] Rest Acc ->
+    (urdr.eventlog.coordinates-of Rest [Coordinate | Acc]))
 
 \\ Kind names travel as canonical symbols that are not reserved
 \\ authorities (component.shen), so `command` becomes `command-input`
@@ -605,6 +685,7 @@
 
 (define urdr.eventlog.advance-actor
   choice [choice _ Actor _ _] -> Actor
+  choice [choice _ Actor _ _ _ _] -> Actor
   component [component-input Name _] -> Name
   _ _ -> (urdr.eventlog.n w-world))
 
