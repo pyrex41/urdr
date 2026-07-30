@@ -90,7 +90,13 @@ therefore accept their own published alternatives as inputs; the
 built-in net and timer models publish alternatives that need
 model-specific wrapping (deliver-input / fire-input) and their
 selection plumbing is deferred to the wave that integrates them under
-the driver. Both scheduled entries land in the world transcript, so
+the driver. The built-in fault model's alternatives ARE input-shaped,
+but it republishes its fault-action menu on every step, so under this
+always-resolve rule a driver-run built-in fault toggles
+activate/deactivate until max-steps aborts the attempt — its
+integration needs a menu-quiescence policy and is deferred with the
+same wave (the partition-retry reference scenario binds a one-shot
+process model instead; see shen/run/models/partition-retry.shen). Both scheduled entries land in the world transcript, so
 replay re-derives the whole run from the transcript without
 re-drawing (D2: the transcript, not the PRNG, is the authority).
 
