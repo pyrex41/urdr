@@ -119,6 +119,9 @@
 (define urdr.scenario.n.members
   -> [109 101 109 98 101 114 115])
 
+(define urdr.scenario.n.model
+  -> [109 111 100 101 108])
+
 (define urdr.scenario.n.modeled
   -> [109 111 100 101 108 101 100])
 
@@ -207,9 +210,20 @@
 (define urdr.scenario.link-keys
   -> [(urdr.scenario.n.from) (urdr.scenario.n.to)])
 
+\\ The `model` key is optional (ADR 0007 D3): a roster entry may bind a
+\\ model symbol, and one without it defaults to its kind's builder. The
+\\ expected key list is chosen by the presence of the key, so an absent
+\\ model is legal while an unknown key is still rejected and keys still
+\\ ascend: id < kind < model < node in ASCII order.
 (define urdr.scenario.component-keys
   -> [(urdr.scenario.n.id)
       (urdr.scenario.n.kind)
+      (urdr.scenario.n.node)])
+
+(define urdr.scenario.component-keys-with-model
+  -> [(urdr.scenario.n.id)
+      (urdr.scenario.n.kind)
+      (urdr.scenario.n.model)
       (urdr.scenario.n.node)])
 
 (define urdr.scenario.fault-keys
@@ -786,7 +800,7 @@
 
 (define urdr.scenario.components-step
   [error E] Items Nodes Previous Acc -> [error E]
-  [ok [component Id Kind Node]] Items Nodes Previous Acc ->
+  [ok [component Id Kind Node Model]] Items Nodes Previous Acc ->
     (let Order
       (urdr.scenario.ascending
         Previous
@@ -796,14 +810,37 @@
       (if (= (hd Order) error)
           Order
           (urdr.scenario.components-loop
-            Items Nodes Id [[component Id Kind Node] | Acc]))))
+            Items Nodes Id [[component Id Kind Node Model] | Acc]))))
 
+(define urdr.scenario.field-present?
+  Key [] -> false
+  Key [[K _] | Fields] ->
+    (if (= (urdr.canonical.bytes-compare Key K) eq)
+        true
+        (urdr.scenario.field-present? Key Fields))
+  Key _ -> false)
+
+\\ The presence of the optional `model` key selects the expected key
+\\ list, so absence is legal while a misplaced, duplicated, or unknown
+\\ key keeps its exact-match rejection. Canonical validation has already
+\\ rejected unordered and duplicated keys before this point.
 (define urdr.scenario.component
   Item Nodes ->
-    (urdr.scenario.component-fields
-      (urdr.scenario.record-fields
-        Item (urdr.scenario.component-keys) scenario-component-type)
-      Nodes))
+    (urdr.scenario.component-record
+      (urdr.scenario.record Item scenario-component-type) Nodes))
+
+(define urdr.scenario.component-record
+  [error E] Nodes -> [error E]
+  [ok Fields] Nodes ->
+    (if (urdr.scenario.field-present? (urdr.scenario.n.model) Fields)
+        (urdr.scenario.component-model-fields
+          (urdr.scenario.fields
+            Fields (urdr.scenario.component-keys-with-model) [])
+          Nodes)
+        (urdr.scenario.component-fields
+          (urdr.scenario.fields
+            Fields (urdr.scenario.component-keys) [])
+          Nodes)))
 
 (define urdr.scenario.component-fields
   [error E] Nodes -> [error E]
@@ -811,19 +848,31 @@
     (urdr.scenario.component-parts
       (urdr.scenario.symbol Id scenario-component-id-type)
       (urdr.scenario.symbol Kind scenario-component-kind-type)
+      [ok none]
+      (urdr.scenario.symbol Node scenario-component-node-type)
+      Nodes))
+
+(define urdr.scenario.component-model-fields
+  [error E] Nodes -> [error E]
+  [ok [Id Kind Model Node]] Nodes ->
+    (urdr.scenario.component-parts
+      (urdr.scenario.symbol Id scenario-component-id-type)
+      (urdr.scenario.symbol Kind scenario-component-kind-type)
+      (urdr.scenario.symbol Model scenario-component-model-type)
       (urdr.scenario.symbol Node scenario-component-node-type)
       Nodes))
 
 (define urdr.scenario.component-parts
-  [error E] Kind Node Nodes -> [error E]
-  Id [error E] Node Nodes -> [error E]
-  Id Kind [error E] Nodes -> [error E]
-  [ok Id] [ok Kind] [ok Node] Nodes ->
+  [error E] Kind Model Node Nodes -> [error E]
+  Id [error E] Model Node Nodes -> [error E]
+  Id Kind [error E] Node Nodes -> [error E]
+  Id Kind Model [error E] Nodes -> [error E]
+  [ok Id] [ok Kind] [ok Model] [ok Node] Nodes ->
     (if (not (urdr.scenario.member?
                Kind (urdr.scenario.component-kinds)))
         [error scenario-component-kind-unsupported]
         (if (urdr.scenario.member? Node Nodes)
-            [ok [component Id Kind Node]]
+            [ok [component Id Kind Node Model]]
             [error scenario-unknown-node])))
 
 \\ ---------------------------------------------------------------------
@@ -1258,12 +1307,21 @@
        [(urdr.scenario.n.max-runs) Runs]
        [(urdr.scenario.n.max-steps) Steps]]])
 
+\\ Validation is lossless: an absent model renders no `model` key, so
+\\ encode(value(validate(decode(frame)))) reproduces the frame bytes.
 (define urdr.scenario.components-value
   [] -> []
-  [[component Id Kind Node] | Rest] ->
+  [[component Id Kind Node none] | Rest] ->
     [[record
        [[(urdr.scenario.n.id) [symbol Id]]
         [(urdr.scenario.n.kind) [symbol Kind]]
+        [(urdr.scenario.n.node) [symbol Node]]]]
+     | (urdr.scenario.components-value Rest)]
+  [[component Id Kind Node Model] | Rest] ->
+    [[record
+       [[(urdr.scenario.n.id) [symbol Id]]
+        [(urdr.scenario.n.kind) [symbol Kind]]
+        [(urdr.scenario.n.model) [symbol Model]]
         [(urdr.scenario.n.node) [symbol Node]]]]
      | (urdr.scenario.components-value Rest)])
 

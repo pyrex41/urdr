@@ -55,6 +55,15 @@ X|component-unknown-node|invalid/component-unknown-node.frame|scenario-unknown-n
 X|duplicate-component|invalid/duplicate-component.frame|scenario-duplicate-component
 X|component-order|invalid/component-order.frame|scenario-component-order
 X|component-kind-type|invalid/component-kind-type.frame|scenario-component-kind-type
+# ADR 0007 D3: the optional per-component `model` binding. Presence
+# selects the expected key list, so absence stays legal; a non-symbol
+# model fails with its own scenario code, while a duplicated or
+# misplaced model key never reaches the scenario layer because the
+# canonical decoder rejects the record first (ADR 0002 codes).
+V|component-model|valid/component-model.frame
+X|component-model-type|invalid/component-model-type.frame|scenario-component-model-type
+X|component-model-duplicate|invalid/component-model-duplicate.frame|record-duplicate
+X|component-model-misplaced|invalid/component-model-misplaced.frame|record-order
 X|faults-type|invalid/faults-type.frame|scenario-faults-type
 X|fault-kind-unsupported|invalid/fault-kind-unsupported.frame|scenario-fault-kind-unsupported
 X|fault-kinds-empty|invalid/fault-kinds-empty.frame|scenario-fault-kinds-empty

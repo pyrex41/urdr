@@ -15,8 +15,9 @@
            []])
 
 \\ Boot a world with a modeled-component registry (ADR 0004 Decision 1).
-\\ Registry entries are [component NAME HANDLER STATE]; an invalid registry
-\\ is refused here rather than repaired at the first dispatch.
+\\ Registry entries are [component NAME HANDLER STATE META] (ADR 0007
+\\ D3); an invalid registry is refused here rather than repaired at the
+\\ first dispatch.
 (define urdr.world.initial-with-components
   Seed Registry ->
     (let Valid (urdr.component.registry-valid? Registry)
@@ -350,23 +351,35 @@
 \\ reduction's choices. Every rejection is a fail-closed run error.
 (define urdr.world.component-find
   _ [] -> none
-  Name [[component Name Handler State] | _] ->
-    [component Name Handler State]
+  Name [[component Name Handler State Meta] | _] ->
+    [component Name Handler State Meta]
   Name [_ | Rest] -> (urdr.world.component-find Name Rest))
 
 (define urdr.world.component-put
-  [component Name Handler State] [] ->
-    [[component Name Handler State]]
-  [component Name Handler State] [[component Name _ _] | Rest] ->
-    [[component Name Handler State] | Rest]
+  [component Name Handler State Meta] [] ->
+    [[component Name Handler State Meta]]
+  [component Name Handler State Meta] [[component Name _ _ _] | Rest] ->
+    [[component Name Handler State Meta] | Rest]
   Entry [Head | Rest] ->
     [Head | (urdr.world.component-put Entry Rest)])
 
-\\ The component reads logical time; it may never assert one back.
+\\ The component's declared identity (ADR 0007 D3): its registered name
+\\ and, from the validated META record, the node it was declared on. The
+\\ component reads its identity under the event's `self` key; it may
+\\ never emit `self` back — the reserved-authority scan rejects that.
+(define urdr.world.self-value
+  Name Meta ->
+    [record
+      [[[105 100] [symbol Name]]
+       [[110 111 100 101] (urdr.component.meta-node-value Meta)]]])
+
+\\ The component reads logical time and its own identity; it may never
+\\ assert either back. Keys ascend: input < self < time < type.
 (define urdr.world.component-event
-  At Value ->
+  At Value Name Meta ->
     [record
       [[[105 110 112 117 116] Value]
+       [[115 101 108 102] (urdr.world.self-value Name Meta)]
        [[116 105 109 101] At]
        [[116 121 112 101]
         [symbol [99 111 109 112 111 110 101 110 116 45
@@ -425,30 +438,31 @@
       World
       (urdr.component.code "component-unknown")
       (urdr.world.component-detail Name [null]))
-  World Id At Name Value [component _ Handler State] ->
+  World Id At Name Value [component _ Handler State Meta] ->
     (urdr.world.component-result
-      World Id At Name Handler
+      World Id At Name Handler Meta
       (urdr.component.step
-        Handler State (urdr.world.component-event At Value))))
+        Handler State
+        (urdr.world.component-event At Value Name Meta))))
 
 (define urdr.world.component-result
-  World Id At Name Handler [error Code Detail] ->
+  World Id At Name Handler Meta [error Code Detail] ->
     (urdr.world.error
       World Code (urdr.world.component-detail Name Detail))
-  World Id At Name Handler [ok [step State Facts Choices]] ->
+  World Id At Name Handler Meta [ok [step State Facts Choices]] ->
     (urdr.world.component-commit
-      World Id At Name Handler State Facts Choices))
+      World Id At Name Handler Meta State Facts Choices))
 
 (define urdr.world.component-commit
   [world/v1
     Time NextId Pending Seed Streams Transcript Verdicts
     Components Facts]
-  Id At Name Handler State NewFacts Choices ->
+  Id At Name Handler Meta State NewFacts Choices ->
     [reduction
       [world/v1
         Time NextId Pending Seed Streams Transcript Verdicts
         (urdr.world.component-put
-          [component Name Handler State] Components)
+          [component Name Handler State Meta] Components)
         (append Facts
           (urdr.world.fact-values Id At Name NewFacts))]
       []
@@ -623,9 +637,13 @@
        [[115 116 97 116 101 45 100 105 103 101 115 116]
         (urdr.world.state-digest-value State)]]])
 
+\\ The snapshot binds name and state digest only. Binding the entry's
+\\ META (model and node identity) into snapshots and certificates is
+\\ deliberately deferred to the ADR 0008 wave, so the snapshot shape is
+\\ unchanged this wave even though META exists at runtime.
 (define urdr.world.component-values
   [] -> []
-  [[component Name _ State] | Rest] ->
+  [[component Name _ State _] | Rest] ->
     [(urdr.world.component-value Name State) |
      (urdr.world.component-values Rest)])
 

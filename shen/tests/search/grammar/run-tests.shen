@@ -127,9 +127,10 @@
 (define ug.world
   -> (let R (urdr.world.initial-with-components
               (ug.k "grammar-world")
-              [[component (ug.comp-name)
+              [(urdr.component.entry
+                 (ug.comp-name)
                  (/. S E (ug.counter S E))
-                 (ug.counter-state 0)]])
+                 (ug.counter-state 0))])
        (if (= (hd R) ok) (hd (tl R)) R)))
 
 \\ Drop the last transcript entry (withhold).
