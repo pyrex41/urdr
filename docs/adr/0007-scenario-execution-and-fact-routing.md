@@ -212,11 +212,19 @@ evidence.
    irrelevant entry with the same failure signature; replay of the
    minimized artifact reproduces the verdicts; the certificate's verdicts
    come from `urdr.properties.check`, not fixtures.
-   **Deferred at acceptance:** the shrink and replay legs. The driver's
-   scope note (`shen/run/run.shen` header) explicitly leaves shrink and
-   replay integration under `urdr.run` to the next wave; nothing in the
-   accepted change calls shrink. Discovery and the certificate leg are
-   met; the remainder is owed by that wave, not claimed here.
+   **Met.** `urdr.run.execute` on the partition-retry scenario discovers
+   the liveness failure at attempt 2 (attempts 0-1 legitimately pass);
+   shrink minimizes 28 entries to 5 under an EVAL that re-drives the
+   world and re-evaluates properties; replay verifies the minimized
+   artifact and reproduces the verdicts; the v2 certificate reports FAIL
+   with verdicts from `urdr.properties.check`. The discovered failure is
+   a real race — an early partition selection delivered while the first
+   reply is in flight — not a planted marker. Two carriers remain
+   unclaimed and are recorded in `docs/status/m1-5.md`: the built-in
+   net/timer/fault models are not yet resolvable under the driver (the
+   built-in fault republishes its menu every step, so a driver run would
+   never quiesce), and liveness failures are the no-witness form until
+   timer integration allows time-advancing schedules.
 3. Two `process` components in one scenario run distinct models with
    distinct initial states; each observes its own id and node under the
    `self` key; a component claiming `self` in its output is rejected.
@@ -231,10 +239,13 @@ evidence.
    **Deferred at acceptance:** the strategy-independence demonstration.
    Membership verification and the divergence code
    (`replay-selection-divergence`) are met, but `urdr.run.execute-with` —
-   the door that exposes the `baseline` strategy — has no caller that
-   configures `baseline`; the demonstration is owed by the wave that
-   integrates replay under `urdr.run` (item 2's deferral), not claimed
-   here.
+   the door that exposes the `baseline` strategy — still has no caller
+   that configures `baseline`, so no run demonstrates that a
+   `boundary`-discovered transcript replays unchanged under a different
+   strategy. Item 2's shrink and replay integration, which this note
+   previously named as the owing wave, has since landed without
+   supplying it; the demonstration is a standalone debt, owed by
+   whichever wave next touches strategy selection.
 6. All changed suites pass `make conformance` on the available lane with
    re-pinned digests recorded in the same change, and `make quality` stays
    green.
