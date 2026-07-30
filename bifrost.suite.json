@@ -171,6 +171,20 @@
       "raw_golden_path": "shen/tests/integration/golden.txt",
       "raw_golden_sha256": "d9c67714a6033f92599eb360a2c3cb4b010431ae8df9db2e1e5effa7b33336d8",
       "doc": "M1 abstract-world exit demonstration (partition-retry)"
+    },
+    {
+      "name": "run-driver",
+      "mode": "script",
+      "program": "shen/tests/run/run-tests.shen",
+      "program_sha256": "c3547224c2eb5b3927a8078e8cbff4f79fdce97ea7534d081752459da5847138",
+      "expect": "marker",
+      "marker": "ALL PASS",
+      "heavy": true,
+      "fixture_manifest": null,
+      "fixture_manifest_sha256": null,
+      "raw_golden_path": "shen/tests/run/golden.txt",
+      "raw_golden_sha256": "51efcc7347ccb9b3a9b9f9916df237ee9693827e42bd0d14189085ddb4915f89",
+      "doc": "Scenario driver: step loop, budgets, discovery, and determinism"
     }
   ]
 }

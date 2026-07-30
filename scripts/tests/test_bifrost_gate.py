@@ -106,6 +106,13 @@ def semantic_outputs() -> dict[str, bytes]:
         "INTEGRATION CASES: 3",
         "ALL PASS",
     ]
+    run_driver = [
+        "RUN|quiescent|exhausted|attempts=2|distinct=1|errors=0|sig=ab12",
+        "RUN|discovery|attempt=1|sig=cd34",
+        "RUN|certificate|status=FAIL|profile=modeled-d1-analog",
+        "RUN CASES: 9",
+        "ALL PASS",
+    ]
     return {
         "canonical-values": ("\n".join(canonical) + "\n").encode("ascii"),
         "named-prng": ("\n".join(prng) + "\n").encode("ascii"),
@@ -119,6 +126,7 @@ def semantic_outputs() -> dict[str, bytes]:
         "explore-shrink": ("\n".join(explore) + "\n").encode("ascii"),
         "scenario-grammar": ("\n".join(grammar) + "\n").encode("ascii"),
         "m1-integration": ("\n".join(integration) + "\n").encode("ascii"),
+        "run-driver": ("\n".join(run_driver) + "\n").encode("ascii"),
     }
 
 
@@ -155,6 +163,7 @@ def valid_execution(required: tuple[str, ...] | None = None):
             "shen/tests/search/golden.txt": outputs["explore-shrink"],
             "shen/tests/search/grammar/golden.txt": outputs["scenario-grammar"],
             "shen/tests/integration/golden.txt": outputs["m1-integration"],
+            "shen/tests/run/golden.txt": outputs["run-driver"],
         }.get(path, outputs["world-reducer"]),
         {
             name: hashlib.sha256(output).hexdigest()
