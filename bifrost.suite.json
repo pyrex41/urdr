@@ -50,14 +50,14 @@
       "name": "scenario-parse",
       "mode": "script",
       "program": "shen/tests/scenario/run-tests.shen",
-      "program_sha256": "b263d6f5c173602a7c4dc6bbdb9e8c45465b3205f2daaf06e65303c008073e6a",
+      "program_sha256": "0b77218d8951add1968102f62c16b7c35530bf761c07c11dd6b5ee68647fafae",
       "expect": "marker",
       "marker": "ALL PASS",
       "heavy": true,
       "fixture_manifest": "protocol/fixtures/v1/scenario/SHA256SUMS",
-      "fixture_manifest_sha256": "26665e6582acfdd57c49d384b1467b48f33746e33e7fdb8c0ce2380ce7a5cc98",
+      "fixture_manifest_sha256": "92d026439784b378d1895ea950d0cfb21ffa5735e2d5a974b7d4fde5b861089d",
       "raw_golden_path": null,
-      "raw_golden_sha256": "145945fdc66dbb9c2f0993618bcd7815e574f0771b3d51967f49f63f111f0924",
+      "raw_golden_sha256": "987d8aa830b1d5bacfa8b20d81ea57c677c32832a120d82138038fcc375e5f5b",
       "doc": "Scenario DSL parse, validation, profiles, and fixture rejection"
     },
     {

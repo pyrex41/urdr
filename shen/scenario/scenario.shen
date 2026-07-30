@@ -930,9 +930,27 @@
     (if (not (urdr.scenario.member?
                Kind (urdr.scenario.component-kinds)))
         [error scenario-component-kind-unsupported]
-        (if (urdr.scenario.member? Node Nodes)
-            [ok [component Id Kind Node Model]]
-            [error scenario-unknown-node])))
+        (if (not (urdr.scenario.model-kind? Kind Model))
+            [error scenario-component-model-kind]
+            (if (urdr.scenario.member? Node Nodes)
+                [ok [component Id Kind Node Model]]
+                [error scenario-unknown-node]))))
+
+\\ A model binding is only meaningful on a `process` component (ADR
+\\ 0007 D3 contemplates no other carrier). The registry dispatches on
+\\ the presence of a model before it ever consults the kind
+\\ (urdr.model.registry.entry), so a `net`/`timer`/`fault` entry that
+\\ bound a model would silently build as that model's crash-aware
+\\ process, discarding the declared kind with no trace in the
+\\ certificate's evidence. Validation is the door that fails closed
+\\ before any registry or world exists, so the substitution can never
+\\ start.
+(define urdr.scenario.model-kind?
+  Kind none -> true
+  Kind Model ->
+    (= (urdr.canonical.bytes-compare
+         Kind (urdr.scenario.n.process))
+       eq))
 
 \\ ---------------------------------------------------------------------
 \\ faults: named fault domains over declared nodes.
