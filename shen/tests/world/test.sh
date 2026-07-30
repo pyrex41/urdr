@@ -4,10 +4,27 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 cd "$ROOT"
 
-CL=${SHEN_CL:-/Users/reuben/projects/urdr-shen-cl-41.2/bin/sbcl/shen}
-GO=${SHEN_GO:-/Users/reuben/projects/shen-go/.bin/shen-go}
-RUST=${SHEN_RUST:-/Users/reuben/projects/shen-rust/target/release/shen-rust}
-LUA=${SHEN_LUA:-/Users/reuben/projects/shen-lua/bin/shen}
+# Launcher paths default to the pinned checkouts under
+# .cache/urdr/dependencies and are overridable with SHEN_GO, SHEN_LUA,
+# SHEN_CL, SHEN_RUST (or URDR_DEPENDENCIES for the whole tree). In a
+# linked worktree the dependency cache lives beside the main checkout,
+# so fall back to the common git directory's parent.
+DEPS=${URDR_DEPENDENCIES:-}
+if [ -z "$DEPS" ]; then
+  DEPS=$ROOT/.cache/urdr/dependencies
+  if [ ! -d "$DEPS" ]; then
+    common=$(git -C "$ROOT" rev-parse --path-format=absolute \
+      --git-common-dir 2>/dev/null || true)
+    if [ -n "$common" ]; then
+      DEPS=$(dirname -- "$common")/.cache/urdr/dependencies
+    fi
+  fi
+fi
+
+CL=${SHEN_CL:-$DEPS/shen-cl/bin/sbcl/shen}
+GO=${SHEN_GO:-$DEPS/shen-go/.bin/shen-go}
+RUST=${SHEN_RUST:-$DEPS/shen-rust/target/release/shen-rust}
+LUA=${SHEN_LUA:-$DEPS/shen-lua/bin/shen}
 GOLDEN=shen/tests/world/golden.txt
 CACHE=$ROOT/.shen-kernel-cache.bin
 

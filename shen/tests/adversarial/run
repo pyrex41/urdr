@@ -13,25 +13,33 @@ from pathlib import Path
 
 
 HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[2]
+
+# Launchers resolve against the pinned checkouts under
+# .cache/urdr/dependencies (URDR_DEPENDENCIES overrides the whole tree,
+# matching scripts/build-ports); URDR_SHEN_* overrides one launcher.
+DEPENDENCIES = Path(
+    os.environ.get("URDR_DEPENDENCIES", ROOT / ".cache" / "urdr" / "dependencies")
+)
 PORTS = {
     "shen-go": (
         "URDR_SHEN_GO",
-        Path("/Users/reuben/projects/shen-go/.bin/shen-go"),
+        DEPENDENCIES / "shen-go" / ".bin" / "shen-go",
         ("--version",),
     ),
     "shen-lua": (
         "URDR_SHEN_LUA",
-        Path("/Users/reuben/projects/shen-lua/bin/shen"),
+        DEPENDENCIES / "shen-lua" / "bin" / "shen",
         ("-q", "-e", "(+ 1 1)"),
     ),
     "shen-cl": (
         "URDR_SHEN_CL",
-        Path("/Users/reuben/projects/urdr-shen-cl-41.2/bin/sbcl/shen"),
+        DEPENDENCIES / "shen-cl" / "bin" / "sbcl" / "shen",
         ("--version",),
     ),
     "shen-rust": (
         "URDR_SHEN_RUST",
-        Path("/Users/reuben/projects/shen-rust/target/release/shen-rust"),
+        DEPENDENCIES / "shen-rust" / "target" / "release" / "shen-rust",
         ("--version",),
     ),
 }

@@ -33,15 +33,19 @@ GO=${SHEN_GO:-$DEPS/shen-go/.bin/shen-go}
 RUST=${SHEN_RUST:-$DEPS/shen-rust/target/release/shen-rust}
 LUA=${SHEN_LUA:-$DEPS/shen-lua/bin/shen}
 
-# Prefer an explicit SHEN_GO on PATH / local bin when the cache path is
-# missing (single-port development).
-if [ ! -x "$GO" ] && [ -x /Users/reuben/.local/bin/shen-go ]; then
-  GO=/Users/reuben/.local/bin/shen-go
-fi
-
 PROGRAM=shen/tests/search/grammar/run-tests.shen
 GOLDEN=shen/tests/search/grammar/golden.txt
 CACHE=$ROOT/.shen-kernel-cache.bin
+
+# Golden fixtures are source inputs (CONTRIBUTING.md): this script never
+# generates one. A missing golden is a hard failure, not permission to
+# bless whatever the current build prints.
+if [ ! -f "$GOLDEN" ]; then
+  printf 'grammar suite: FAIL missing %s\n' "$GOLDEN" >&2
+  printf 'Create and commit the golden deliberately (review the semantic\n' >&2
+  printf 'projection by hand); this script will not generate it.\n' >&2
+  exit 1
+fi
 
 SEMANTIC='^(SEED\||MUT\||REPLAY\||FAIL\||GRAMMAR CASES: |GRAMMAR: FAIL$|ALL PASS$)'
 
@@ -65,26 +69,14 @@ run_port() {
   if "$@" >"$work/out" 2>"$work/err" &&
      /usr/bin/grep -E "$SEMANTIC" "$work/out" >"$work/semantic" &&
      /usr/bin/grep -q '^ALL PASS$' "$work/semantic"; then
-    if [ -f "$GOLDEN" ]; then
-      if /usr/bin/cmp -s "$GOLDEN" "$work/semantic"; then
-        printf '%s: PASS exact-golden\n' "$name"
-        ran=$((ran + 1))
-      else
-        printf '%s: FAIL golden mismatch\n' "$name" >&2
-        /usr/bin/diff -u "$GOLDEN" "$work/semantic" >&2 || true
-        /bin/cat "$work/err" >&2 || true
-        exit 1
-      fi
+    if /usr/bin/cmp -s "$GOLDEN" "$work/semantic"; then
+      printf '%s: PASS exact-golden\n' "$name"
+      ran=$((ran + 1))
     else
-      # First shen-go run generates the golden.
-      if [ "$name" = "shen-go" ]; then
-        /bin/cp "$work/semantic" "$GOLDEN"
-        printf '%s: PASS generated golden\n' "$name"
-        ran=$((ran + 1))
-      else
-        printf '%s: FAIL no golden.txt yet (run shen-go first)\n' "$name" >&2
-        exit 1
-      fi
+      printf '%s: FAIL golden mismatch\n' "$name" >&2
+      /usr/bin/diff -u "$GOLDEN" "$work/semantic" >&2 || true
+      /bin/cat "$work/err" >&2 || true
+      exit 1
     fi
   else
     printf '%s: FAIL\n' "$name" >&2
@@ -99,7 +91,7 @@ run_port shen-cl "$CL" script "$PROGRAM"
 run_port shen-rust "$RUST" script "$PROGRAM"
 run_port shen-lua "$LUA" "$PROGRAM"
 
-if [ -z "${GOLDEN_ONLY:-}" ] && [ "$ran" -eq 0 ]; then
+if [ "$ran" -eq 0 ]; then
   printf 'grammar suite: BLOCKED no Shen port launcher was available\n' >&2
   exit 1
 fi

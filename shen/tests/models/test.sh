@@ -9,14 +9,18 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 cd "$ROOT"
 
 # A git worktree has no .cache/ of its own; the dependency cache lives in
-# the main checkout next to the common git directory.
-DEPS=$ROOT/.cache/urdr/dependencies
-if [ ! -d "$DEPS" ]; then
-  COMMON=$(git rev-parse --git-common-dir 2>/dev/null || printf '')
-  if [ -n "$COMMON" ]; then
-    MAIN=$(CDPATH= cd -- "$COMMON/.." && pwd)
-    if [ -d "$MAIN/.cache/urdr/dependencies" ]; then
-      DEPS=$MAIN/.cache/urdr/dependencies
+# the main checkout next to the common git directory. URDR_DEPENDENCIES
+# overrides the whole tree, matching scripts/build-ports.
+DEPS=${URDR_DEPENDENCIES:-}
+if [ -z "$DEPS" ]; then
+  DEPS=$ROOT/.cache/urdr/dependencies
+  if [ ! -d "$DEPS" ]; then
+    COMMON=$(git rev-parse --git-common-dir 2>/dev/null || printf '')
+    if [ -n "$COMMON" ]; then
+      MAIN=$(CDPATH= cd -- "$COMMON/.." && pwd)
+      if [ -d "$MAIN/.cache/urdr/dependencies" ]; then
+        DEPS=$MAIN/.cache/urdr/dependencies
+      fi
     fi
   fi
 fi
