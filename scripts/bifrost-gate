@@ -87,14 +87,14 @@ EXPECTED_CASES = {
         "name": "world-reducer",
         "mode": "script",
         "program": "shen/tests/world/run-tests.shen",
-        "program_sha256": "48cec2473ff0842d96d652f261ab3e9db5a9c19e3f278a7b829e5168e3a2258c",
+        "program_sha256": "1d0a556b35df7e78f75ea4ab049622bea16bc8c2b88125c8932ef1e928a5ff8c",
         "expect": "marker",
         "marker": "ALL PASS",
         "heavy": True,
         "fixture_manifest": None,
         "fixture_manifest_sha256": None,
         "raw_golden_path": "shen/tests/world/golden.txt",
-        "raw_golden_sha256": "e578ca2fd4d42c208b503711616ee471090e8ad23f8fa9838992cd35b8277a18",
+        "raw_golden_sha256": "07136f4886798df7d66cdfafdd4d77984ce9a56bcd7ceecdaa99a7db93cc3f0a",
         "doc": "World reduction, event ordering, replay, named streams, and trace",
     },
     "scenario-parse": {
@@ -150,7 +150,7 @@ EXPECTED_CASES = {
         "fixture_manifest": None,
         "fixture_manifest_sha256": None,
         "raw_golden_path": "shen/tests/models/golden.txt",
-        "raw_golden_sha256": "de2e84f213a40eb3d46b44706f48a3b654593baa1b2609ec2d8594ee0d2ad4b9",
+        "raw_golden_sha256": "2e2c9f89a5d2f9f436695c1d83d908950988c68f8530f96dc9e2268431d19aeb",
         "doc": "Net, timer, and fault components plus the NetKAT witness bridge",
     },
     "property-verdicts": {
@@ -171,14 +171,14 @@ EXPECTED_CASES = {
         "name": "replay-certificate",
         "mode": "script",
         "program": "shen/tests/replay/run-tests.shen",
-        "program_sha256": "29942fc926b8d7ba9318ca6c5950e1201213ffa34e2add02d6fa75a246fef450",
+        "program_sha256": "70b2319514b9feec53876456853ff95c0a72e04f5dc194151aad36733351d2cd",
         "expect": "marker",
         "marker": "ALL PASS",
         "heavy": True,
         "fixture_manifest": None,
         "fixture_manifest_sha256": None,
         "raw_golden_path": "shen/tests/replay/golden.txt",
-        "raw_golden_sha256": "b2cacef9395baa0be136656110bc599c5dd7361ffffe5c42b53833e936ad7352",
+        "raw_golden_sha256": "c68014e8757c853d972a4f03af8879820c6223adb5e3d5057f3189d4ac0a5829",
         "doc": "Event records, transcript replay, certificates, and run identity",
     },
     "explore-shrink": {
@@ -220,21 +220,21 @@ EXPECTED_CASES = {
         "fixture_manifest": None,
         "fixture_manifest_sha256": None,
         "raw_golden_path": "shen/tests/integration/golden.txt",
-        "raw_golden_sha256": "d9c67714a6033f92599eb360a2c3cb4b010431ae8df9db2e1e5effa7b33336d8",
+        "raw_golden_sha256": "8a28fa45d427930ee53edce0bd13a47a6d672a6958e14fff52afee9de51473d6",
         "doc": "M1 abstract-world exit demonstration (partition-retry)",
     },
     "run-driver": {
         "name": "run-driver",
         "mode": "script",
         "program": "shen/tests/run/run-tests.shen",
-        "program_sha256": "c3547224c2eb5b3927a8078e8cbff4f79fdce97ea7534d081752459da5847138",
+        "program_sha256": "37d8c27cc38f1707201355f82fd5c36bd0df4e3e6627edcf3610c4177fe6f910",
         "expect": "marker",
         "marker": "ALL PASS",
         "heavy": True,
         "fixture_manifest": None,
         "fixture_manifest_sha256": None,
         "raw_golden_path": "shen/tests/run/golden.txt",
-        "raw_golden_sha256": "51efcc7347ccb9b3a9b9f9916df237ee9693827e42bd0d14189085ddb4915f89",
+        "raw_golden_sha256": "e2058057088834f938f7ca6ae3816278522e437ffec1c921c1db4085cfbd210b",
         "doc": "Scenario driver: step loop, budgets, discovery, and determinism",
     },
 }
@@ -820,7 +820,7 @@ def validate_output_shape(case_name: str, semantic: bytes) -> None:
             or lines[0].split(" ")[1] != lines[1].split(" ")[1]
             or not re.fullmatch(r"WORLD-TRACE [0-9a-f]+", lines[2])
             or not re.fullmatch(r"WORLD-COMPONENT-TRACE [0-9a-f]+", lines[3])
-            or lines[4] != "WORLD TESTS: 24/24 PASS"
+            or lines[4] != "WORLD TESTS: 26/26 PASS"
         ):
             raise GateFailure("world raw output or lowercase trace changed")
 

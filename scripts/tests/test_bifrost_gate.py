@@ -42,7 +42,7 @@ def semantic_outputs() -> dict[str, bytes]:
         "WORLD-CHOICE-SELECTED 1a2b",
         "WORLD-TRACE abcd",
         "WORLD-COMPONENT-TRACE ef01",
-        "WORLD TESTS: 24/24 PASS",
+        "WORLD TESTS: 26/26 PASS",
         "ALL PASS",
     ]
     scenario = [

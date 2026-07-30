@@ -450,6 +450,33 @@
        (urn.disc-h
          (urdr.run.execute (urn.disc-scenario (urn.seed1)) (urn.models)))))
 
+\\ The certificate's model bindings (ADR 0008), rendered id:model@node
+\\ in registry order. Checked against the scenario's declared roster,
+\\ not merely printed: the driver's certificate must commit to WHICH
+\\ model ran each component.
+(define urn.sym-string
+  [some [symbol Bs]] -> (urn.string Bs)
+  [some [null]] -> "-"
+  _ -> "?")
+
+(define urn.binding-string
+  Value ->
+    (cn (urn.sym-string
+          (urdr.certificate.field-of (urn.k "component") Value))
+        (cn ":"
+            (cn (urn.sym-string
+                  (urdr.certificate.field-of (urn.k "model") Value))
+                (cn "@"
+                    (urn.sym-string
+                      (urdr.certificate.field-of
+                        (urn.k "node") Value)))))))
+
+(define urn.bindings-string
+  [] -> ""
+  [B] -> (urn.binding-string B)
+  [B | Rest] ->
+    (cn (urn.binding-string B) (cn "," (urn.bindings-string Rest))))
+
 (define urn.disc-h
   [ok [discovered Attempt Seed Transcript Verdicts Cert]] ->
     (let A (output "RUN|discovery|attempt=~A|sig=~A~%"
@@ -458,7 +485,11 @@
          Status (urn.string (urdr.certificate.status Cert))
          Profile (urn.string (urdr.certificate.achieved-profile Cert))
          C (output "RUN|certificate|status=~A|profile=~A~%" Status Profile)
-      (if (and (= Status "FAIL") (= Profile "modeled-d1-analog"))
+         Models (urn.bindings-string (urdr.certificate.models Cert))
+         D (output "RUN|models|~A~%" Models)
+      (if (and (= Status "FAIL")
+               (and (= Profile "modeled-d1-analog")
+                    (= Models "client:pinger@a,server:acker@b")))
           true
           (urn.fail "discovery" "certificate-status")))
   [error Code Detail] -> (urn.fail "discovery" (urn.string Code))
