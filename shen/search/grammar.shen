@@ -597,16 +597,23 @@
     (if (= Key Want) Value (urdr.grammar.field Rest Want))
   [_ | Rest] Want -> (urdr.grammar.field Rest Want))
 
+\\ Convert a software integer (or already-small number) to a host
+\\ small natural for field decoding. Magnitude decoding is delegated
+\\ to urdr.int.small-of so the little-endian limb order of ADR 0003
+\\ is honoured in exactly one place; anything outside its host-safe
+\\ window clamps to 0, matching this module's treatment of every
+\\ other malformed field.
 (define urdr.grammar.small-of
   N -> N where (and (number? N) (>= N 0))
-  [big 1 Mag] -> (urdr.grammar.mag-small Mag 0)
+  [big 1 Mag] ->
+    (urdr.grammar.small-of-ok (urdr.int.small-of [big 1 Mag]))
   [big -1 _] -> 0
   [big 0 _] -> 0
   _ -> 0)
 
-(define urdr.grammar.mag-small
-  [] Acc -> Acc
-  [D | Ds] Acc -> (urdr.grammar.mag-small Ds (+ (* Acc 10000) D)))
+(define urdr.grammar.small-of-ok
+  [ok N] -> N
+  _ -> 0)
 
 (define urdr.grammar.symbol-bytes
   [symbol Bs] -> Bs

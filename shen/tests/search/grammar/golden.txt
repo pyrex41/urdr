@@ -9,5 +9,6 @@ REPLAY|withhold|replay-transcript-truncated
 MUT|empty-sizes|rejected
 MUT|bad-mode|rejected
 MUT|no-fit|rejected
-GRAMMAR CASES: 9
+MUT|small-of|true
+GRAMMAR CASES: 10
 ALL PASS

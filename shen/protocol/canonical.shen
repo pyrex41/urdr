@@ -327,14 +327,38 @@
     (urdr.canonical.bytes-compare As Bs))
 
 \\ Exact bounded host arithmetic used only for base-10000 limbs.
-(define urdr.canonical.small-divmod-loop
-  N D Q ->
-    (if (< N D)
-        [Q N]
-        (urdr.canonical.small-divmod-loop (- N D) D (+ Q 1))))
+\\ Truncating divmod of a nonnegative host natural by a positive host
+\\ natural in O(log(N/D)) host operations instead of repeated
+\\ subtraction's O(N/D): collect [Weight Bit] pairs with
+\\ Weight = Bit * D by doubling, largest weight first, then subtract
+\\ them in descending order while summing the Bits -- the same
+\\ descending-weights walk as urdr.canonical.exact-natural-weights?.
+\\ Doubling is guarded by (<= Weight (- N Weight)), which is
+\\ 2*Weight <= N rewritten to use only subtraction, so Weight, Bit,
+\\ the quotient, and the remainder all stay within [0, N]; no host
+\\ intermediate ever exceeds N itself, hence never the reviewed
+\\ ADR 0003 bound of 99,990,000 that every caller already respects.
+\\ Divisor 0 is a caller error and diverges, exactly like the previous
+\\ repeated-subtraction loop; the callers here pass only the constants
+\\ 10000, 1000, 100, and 10. This mirrors urdr.int.small.divmod, which
+\\ the protocol layer must not depend on.
+(define urdr.canonical.small-divmod-down
+  N [] Q -> [Q N]
+  N [[W B] | Ws] Q ->
+    (if (>= N W)
+        (urdr.canonical.small-divmod-down (- N W) Ws (+ Q B))
+        (urdr.canonical.small-divmod-down N Ws Q)))
+
+(define urdr.canonical.small-divmod-up
+  N W B Ws ->
+    (if (> W (- N W))
+        (urdr.canonical.small-divmod-down N [[W B] | Ws] 0)
+        (urdr.canonical.small-divmod-up N (+ W W) (+ B B) [[W B] | Ws])))
 
 (define urdr.canonical.small-divmod
-  N D -> (urdr.canonical.small-divmod-loop N D 0))
+  N D -> (if (< N D)
+             [0 N]
+             (urdr.canonical.small-divmod-up N D 1 [])))
 
 (define urdr.canonical.mag-mul10-add
   Limbs Digit ->

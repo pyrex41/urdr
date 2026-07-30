@@ -1,12 +1,37 @@
 \* ADR 0003 portable signed base-10,000 software integers. *\
 
-(define urdr.int.small.divmod.loop
-  N D Q -> (if (< N D)
-               [Q N]
-               (urdr.int.small.divmod.loop (- N D) D (+ Q 1))))
+\* Truncating divmod of a nonnegative host natural by a positive host
+   natural in O(log(N/D)) host operations instead of repeated
+   subtraction's O(N/D): collect [Weight Bit] pairs with
+   Weight = Bit * D by doubling, largest weight first, then subtract
+   them in descending order while summing the Bits -- the same
+   descending-weights walk as urdr.canonical.exact-natural-weights?.
+   Doubling is guarded by (<= Weight (- N Weight)), which is
+   2*Weight <= N rewritten to use only subtraction, so Weight, Bit,
+   the quotient, and the remainder all stay within [0, N]; no host
+   intermediate ever exceeds N itself, hence never the reviewed
+   ADR 0003 bound of 99,990,000 that every caller already respects.
+   Divisor 0 is a caller error and diverges, exactly like the previous
+   repeated-subtraction loop; every semantic caller either rejects it
+   first (urdr.int.divmod's divide-by-zero) or passes a constant. *\
+
+(define urdr.int.small.divmod.down
+  N [] Q -> [Q N]
+  N [[W B] | Ws] Q ->
+    (if (>= N W)
+        (urdr.int.small.divmod.down (- N W) Ws (+ Q B))
+        (urdr.int.small.divmod.down N Ws Q)))
+
+(define urdr.int.small.divmod.up
+  N W B Ws ->
+    (if (> W (- N W))
+        (urdr.int.small.divmod.down N [[W B] | Ws] 0)
+        (urdr.int.small.divmod.up N (+ W W) (+ B B) [[W B] | Ws])))
 
 (define urdr.int.small.divmod
-  N D -> (urdr.int.small.divmod.loop N D 0))
+  N D -> (if (< N D)
+             [0 N]
+             (urdr.int.small.divmod.up N D 1 [])))
 
 (define urdr.int.small.quot
   N D -> (hd (urdr.int.small.divmod N D)))
@@ -107,6 +132,34 @@
 
 (define urdr.int.raw.from-small
   N -> (hd (tl (urdr.int.from-small N))))
+
+\* Inverse of from-small over the same host-safe window. Limbs are
+   little-endian (ADR 0003): a magnitude [D0 D1] denotes
+   D0 + 10000 * D1, so the fold below weights each later limb, never
+   the accumulator. A magnitude wider than two limbs, or one that
+   decodes above 99990000, leaves the window from-small accepts and
+   fails closed (unsafe-host-integer) before any host arithmetic
+   could overflow a port's small integers. *\
+
+(define urdr.int.mag.to-small
+  [] -> 0
+  [D | Ds] -> (+ D (* 10000 (urdr.int.mag.to-small Ds))))
+
+(define urdr.int.small-of.checked
+  [big 0 []] -> [ok 0]
+  [big S Ds] ->
+    (if (> (length Ds) 2)
+        [error unsafe-host-integer]
+        (let N (urdr.int.mag.to-small Ds)
+          (if (> N 99990000)
+              [error unsafe-host-integer]
+              [ok (if (= S -1) (- 0 N) N)]))))
+
+(define urdr.int.small-of
+  X -> (let V (urdr.int.validate X)
+         (if (= (hd V) error)
+             V
+             (urdr.int.small-of.checked X))))
 
 (define urdr.int.mag.compare.same-length
   [] [] -> 0

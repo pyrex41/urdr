@@ -10,6 +10,7 @@
      MUT|NAME|REJECTED          mutation that must be rejected
      REPLAY|NAME|OK|HEX         minimized transcript replays
      SEED|NAME|MATCH|HEX        same seed reproducibility
+     CHOICE|small-of|OK         software-integer index decoding
      EXPLORE-SHRINK CASES: N
      ALL PASS
 
@@ -592,6 +593,34 @@
   _ _ -> (ues.fail "seed-boundary" "explore-error"))
 
 \\ ---------------------------------------------------------------
+\\ Case group 8: index decoding of software integers (regression:
+\\ ADR 0003 limbs are little-endian, so [big 1 [5000 1]] is 15000,
+\\ not 50000001; indices >= 10000 must survive the decode and
+\\ anything past the host-safe window must fail closed).
+\\ ---------------------------------------------------------------
+
+(define ues.small-of-case
+  -> (/. Unit
+       (let Ok (ues.small-of-checks)
+         (do
+           (output "CHOICE|small-of|~A~%" Ok)
+           (if Ok true (ues.fail "small-of" "wrong-decode"))))))
+
+(define ues.small-of-checks
+  -> (ues.both
+       (ues.both
+         (= (urdr.search.small-of (ues.big 15000)) 15000)
+         (= (urdr.search.small-of [big 1 [5000 1]]) 15000))
+       (ues.both
+         (ues.both
+           (= (urdr.search.small-of (ues.big 99990000)) 99990000)
+           (= (urdr.search.small-of (urdr.int.zero)) 0))
+         (ues.both
+           (= (urdr.search.small-of 7) 7)
+           (= (urdr.int.small-of [big 1 [0 0 1]])
+              [error unsafe-host-integer])))))
+
+\\ ---------------------------------------------------------------
 \\ Driver
 \\ ---------------------------------------------------------------
 
@@ -611,7 +640,8 @@
          (ues.replay-case)
          (ues.replay-orig-case)
          (ues.seed-case)
-         (ues.seed-boundary-case)]]))
+         (ues.seed-boundary-case)
+         (ues.small-of-case)]]))
 
 (define ues.run
   -> (let Cases (ues.cases)
