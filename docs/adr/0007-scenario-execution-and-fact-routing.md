@@ -1,6 +1,6 @@
 # ADR 0007: Scenario execution, pinned decisions, and fact routing
 
-Status: Proposed
+Status: Accepted for M1.5
 
 Date: 2026-07-30
 
@@ -99,10 +99,14 @@ The decision transcript, not the PRNG, is the authority invariant 2 names.
 - Kind dispatch is an association table `kind -> entry-builder`, not a
   conditional. Built-in kinds (`net`, `timer`, `fault`) populate the default
   table; the driver's model table may extend it.
-- The scenario roster binds an optional `model` symbol per component. The
-  model table maps model symbols to `(handler, init-builder)` pairs. Two
-  `process` components may therefore run different models, or the same model
-  with different initial state. A roster entry without a `model` binding
+- The scenario roster binds an optional `model` symbol per `process`
+  component; a `model` binding on any other kind is rejected at scenario
+  validation (the registry dispatches on the presence of a model before
+  the kind, so validation is the only door that keeps a bound non-process
+  entry from silently building as that model's process). The model table
+  maps model symbols to `(handler, init-builder)` pairs. Two `process`
+  components may therefore run different models, or the same model with
+  different initial state. A roster entry without a `model` binding
   defaults to its kind's entry-builder, preserving existing scenarios.
 - The event record handed to a component gains a `self` key carrying the
   component's declared id and node. `self` joins the reserved-authority
@@ -118,7 +122,7 @@ The decision transcript, not the PRNG, is the authority invariant 2 names.
 A scenario may declare routes:
 
 ```text
-[route FROM-COMPONENT FACT-NAME TARGET]
+[route FACT-NAME FROM-COMPONENT TARGET]
 TARGET ::= component id | [node NODE-ID]
 ```
 
@@ -208,6 +212,11 @@ evidence.
    irrelevant entry with the same failure signature; replay of the
    minimized artifact reproduces the verdicts; the certificate's verdicts
    come from `urdr.properties.check`, not fixtures.
+   **Deferred at acceptance:** the shrink and replay legs. The driver's
+   scope note (`shen/run/run.shen` header) explicitly leaves shrink and
+   replay integration under `urdr.run` to the next wave; nothing in the
+   accepted change calls shrink. Discovery and the certificate leg are
+   met; the remainder is owed by that wave, not claimed here.
 3. Two `process` components in one scenario run distinct models with
    distinct initial states; each observes its own id and node under the
    `self` key; a component claiming `self` in its output is rejected.
@@ -219,6 +228,13 @@ evidence.
    whose selection is not in the re-derived menu reports the new stable
    divergence code; strategy-independence is demonstrated by replaying a
    `boundary`-discovered transcript with the `baseline` strategy configured.
+   **Deferred at acceptance:** the strategy-independence demonstration.
+   Membership verification and the divergence code
+   (`replay-selection-divergence`) are met, but `urdr.run.execute-with` —
+   the door that exposes the `baseline` strategy — has no caller that
+   configures `baseline`; the demonstration is owed by the wave that
+   integrates replay under `urdr.run` (item 2's deferral), not claimed
+   here.
 6. All changed suites pass `make conformance` on the available lane with
    re-pinned digests recorded in the same change, and `make quality` stays
    green.
