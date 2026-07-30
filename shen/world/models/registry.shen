@@ -3,6 +3,7 @@ registry (plan Wave C, ADR 0004 Decision 1; ADR 0007 D3).
 
 Requires shen/protocol/canonical.shen, shen/world/integer.shen,
 shen/world/netkat.shen, shen/world/component.shen,
+shen/world/world.shen (for the routed world constructor),
 shen/scenario/scenario.shen, and the three models in
 shen/world/models/ to be loaded by the caller.
 
@@ -403,3 +404,30 @@ already guarantees for its roster. *\
       ModelTable
       [context NetState FaultState BaselineValue]
       []))
+
+\\ ---------------------------------------------------------------
+\\ Routed world boot (ADR 0007 D4). The scenario's validated routes are
+\\ already in the world kernel's [route FACT FROM TARGET] shape — the
+\\ scenario validator and the kernel share it on purpose, so no
+\\ translation layer can drift from the declaration — and they travel
+\\ into the world constructor unchanged. A scenario that declares no
+\\ routes boots a world with an empty route table, byte-identical in
+\\ behavior to the pre-D4 initial-with-components path, so existing
+\\ callers that pair from-scenario with initial-with-components keep
+\\ their behavior; new callers get the declaration end to end.
+\\ ---------------------------------------------------------------
+
+(define urdr.model.registry.world-from-scenario
+  Seed Scenario BaselineValue KindTable ModelTable ->
+    (urdr.model.registry.world-of
+      (urdr.model.registry.from-scenario
+        Scenario BaselineValue KindTable ModelTable)
+      Seed
+      Scenario))
+
+(define urdr.model.registry.world-of
+  [error E] Seed Scenario -> [error E]
+  [error E Detail] Seed Scenario -> [error E Detail]
+  [ok Registry] Seed Scenario ->
+    (urdr.world.initial-with-routes
+      Seed Registry (urdr.scenario.routes-of Scenario)))

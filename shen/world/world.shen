@@ -1,9 +1,52 @@
 \\ Pure immutable world nucleus.
 \\ Requires canonical.shen, prng.shen, and component.shen to be loaded by
 \\ the caller.
+\\
+\\ world/v2 (ADR 0007 D4): the world value grows a tenth slot carrying
+\\ the declared fact routes, the route-cascade limit, and the count of
+\\ routed deliveries at the current logical time. Routing is world
+\\ state — two worlds with the same components but different routes
+\\ reduce differently — so it lives in the world value and in the
+\\ snapshot rather than beside them; smuggling it into the Components
+\\ slot would have hidden a semantic input from every accessor and from
+\\ the shape checks. Every constructor site and the snapshot change with
+\\ the slot, hence the version bump: a world/v1 value is not a world/v2
+\\ value and no code path accepts both.
+\\
+\\ The router (ADR 0007 D4): after a component step commits, the kernel
+\\ matches the step's newly emitted facts — only that step's facts —
+\\ against the declared routes in declaration order (outer loop), each
+\\ route against the facts in emission order (inner loop), and enqueues
+\\ every match as an ordinary [component TARGET VALUE] pending event at
+\\ the current logical time with a fresh event id. Enqueue order is
+\\ therefore (route declaration order, fact emission order), and the
+\\ pending queue's existing (time, id) order makes routed deliveries
+\\ dispatch after any same-time events that were already pending. A node
+\\ target resolves to every registered component whose META node matches,
+\\ in registry order — the registry ascends strictly by component name,
+\\ so fan-out order is canonical component-name order and no host
+\\ iteration order can reach it. Facts matching no route remain
+\\ observations exactly as before. Routing introduces no choice, no time
+\\ advance, and no PRNG draw.
+\\
+\\ Cascade guard: a routed input, when dispatched, may emit facts that
+\\ route again, all at one logical time. The count slot counts every
+\\ individual routed delivery (one per resolved target component)
+\\ enqueued at the current logical time; advancing to a strictly later
+\\ time resets it. A commit whose deliveries would push the count past
+\\ the limit fails closed with route-cascade-exceeded before any state
+\\ change — the step's state, facts, and enqueues are all discarded.
+\\ The limit is 64 this wave (D5 binds it to the scenario budget's
+\\ max-steps when the driver lands).
+
+(define urdr.world.route-depth-default
+  -> (urdr.int.raw.from-small 64))
+
+(define urdr.world.routing-empty
+  -> [routing [] (urdr.world.route-depth-default) (urdr.int.zero)])
 
 (define urdr.world.initial
-  Seed -> [world/v1
+  Seed -> [world/v2
            (urdr.int.zero)
            (urdr.int.zero)
            []
@@ -12,62 +55,146 @@
            []
            []
            []
-           []])
+           []
+           (urdr.world.routing-empty)])
 
 \\ Boot a world with a modeled-component registry (ADR 0004 Decision 1).
 \\ Registry entries are [component NAME HANDLER STATE META] (ADR 0007
 \\ D3); an invalid registry is refused here rather than repaired at the
-\\ first dispatch.
+\\ first dispatch. Routeless boot is routed boot with no routes, so all
+\\ pre-D4 call sites keep their behavior.
 (define urdr.world.initial-with-components
   Seed Registry ->
+    (urdr.world.initial-with-routes Seed Registry []))
+
+\\ Routed boot (ADR 0007 D4). Routes are [route FACT FROM TARGET] with
+\\ TARGET ::= [component ID] | [node NODE]. The scenario validator is
+\\ the primary gate; this door re-checks the parts the kernel depends
+\\ on — fact and from names, and that every component named actually
+\\ registered — so a hand-built world cannot route to a component the
+\\ dispatcher would then fail to find.
+(define urdr.world.initial-with-routes
+  Seed Registry Routes ->
     (let Valid (urdr.component.registry-valid? Registry)
       (if (= (hd Valid) error)
           Valid
-          [ok [world/v1
-                (urdr.int.zero)
-                (urdr.int.zero)
-                []
-                Seed
-                []
-                []
-                []
-                Registry
-                []]])))
+          (urdr.world.initial-routed
+            (urdr.world.routes-check Routes Registry)
+            Seed
+            Registry
+            Routes))))
+
+(define urdr.world.initial-routed
+  [error Code Detail] Seed Registry Routes -> [error Code Detail]
+  [ok] Seed Registry Routes ->
+    [ok [world/v2
+          (urdr.int.zero)
+          (urdr.int.zero)
+          []
+          Seed
+          []
+          []
+          []
+          Registry
+          []
+          [routing
+            Routes
+            (urdr.world.route-depth-default)
+            (urdr.int.zero)]]])
+
+(define urdr.world.route-registered?
+  Name Registry ->
+    (not (= (urdr.world.component-find Name Registry) none)))
+
+(define urdr.world.routes-check
+  [] _ -> [ok]
+  [[route Fact From Target] | Rest] Registry ->
+    (if (not (and (urdr.component.name-valid? Fact)
+                  (urdr.component.name-valid? From)))
+        [error (urdr.component.code "route-shape") [null]]
+        (if (not (urdr.world.route-registered? From Registry))
+            [error (urdr.component.code "route-unknown-component")
+                   [symbol From]]
+            (urdr.world.routes-check-target Target Rest Registry)))
+  _ _ -> [error (urdr.component.code "route-shape") [null]])
+
+(define urdr.world.routes-check-target
+  [component Id] Rest Registry ->
+    (if (urdr.world.route-registered? Id Registry)
+        (urdr.world.routes-check Rest Registry)
+        [error (urdr.component.code "route-unknown-component")
+               [symbol Id]])
+  [node N] Rest Registry ->
+    (if (urdr.component.name-valid? N)
+        (urdr.world.routes-check Rest Registry)
+        [error (urdr.component.code "route-shape") [null]])
+  _ _ _ -> [error (urdr.component.code "route-shape") [null]])
+
+\\ Cheap per-reduction shape check, the routing counterpart of
+\\ urdr.component.registry-shape?: names only, because membership was
+\\ proved at construction and never changes afterwards.
+(define urdr.world.route-target-shape?
+  [component Id] -> (urdr.component.name-valid? Id)
+  [node N] -> (urdr.component.name-valid? N)
+  _ -> false)
+
+(define urdr.world.routes-shape?
+  [] -> true
+  [[route Fact From Target] | Rest] ->
+    (and (urdr.component.name-valid? Fact)
+         (and (urdr.component.name-valid? From)
+              (and (urdr.world.route-target-shape? Target)
+                   (urdr.world.routes-shape? Rest))))
+  _ -> false)
+
+(define urdr.world.routing-shape?
+  [routing Routes Limit Count] ->
+    (and (urdr.world.routes-shape? Routes)
+         (and (urdr.int.valid? Limit)
+              (urdr.int.valid? Count)))
+  _ -> false)
 
 (define urdr.world.valid?
-  [world/v1 Time NextId _ Seed _ _ _ Components _] ->
+  [world/v2 Time NextId _ Seed _ _ _ Components _ Routing] ->
     (and (= (hd (urdr.time.check Time)) ok)
          (and (= (hd (urdr.time.check NextId)) ok)
               (and (= (hd (urdr.prng.octets.check Seed)) ok)
-                   (urdr.component.registry-shape? Components))))
+                   (and (urdr.component.registry-shape? Components)
+                        (urdr.world.routing-shape? Routing)))))
   _ -> false)
 
 (define urdr.world.time
-  [world/v1 Time _ _ _ _ _ _ _ _] -> Time)
+  [world/v2 Time _ _ _ _ _ _ _ _ _] -> Time)
 
 (define urdr.world.next-event-id
-  [world/v1 _ NextId _ _ _ _ _ _ _] -> NextId)
+  [world/v2 _ NextId _ _ _ _ _ _ _ _] -> NextId)
 
 (define urdr.world.pending
-  [world/v1 _ _ Pending _ _ _ _ _ _] -> Pending)
+  [world/v2 _ _ Pending _ _ _ _ _ _ _] -> Pending)
 
 (define urdr.world.seed
-  [world/v1 _ _ _ Seed _ _ _ _ _] -> Seed)
+  [world/v2 _ _ _ Seed _ _ _ _ _ _] -> Seed)
 
 (define urdr.world.streams
-  [world/v1 _ _ _ _ Streams _ _ _ _] -> Streams)
+  [world/v2 _ _ _ _ Streams _ _ _ _ _] -> Streams)
 
 (define urdr.world.transcript
-  [world/v1 _ _ _ _ _ Transcript _ _ _] -> Transcript)
+  [world/v2 _ _ _ _ _ Transcript _ _ _ _] -> Transcript)
 
 (define urdr.world.verdicts
-  [world/v1 _ _ _ _ _ _ Verdicts _ _] -> Verdicts)
+  [world/v2 _ _ _ _ _ _ Verdicts _ _ _] -> Verdicts)
 
 (define urdr.world.components
-  [world/v1 _ _ _ _ _ _ _ Components _] -> Components)
+  [world/v2 _ _ _ _ _ _ _ Components _ _] -> Components)
 
 (define urdr.world.facts
-  [world/v1 _ _ _ _ _ _ _ _ Facts] -> Facts)
+  [world/v2 _ _ _ _ _ _ _ _ Facts _] -> Facts)
+
+(define urdr.world.routing
+  [world/v2 _ _ _ _ _ _ _ _ _ Routing] -> Routing)
+
+(define urdr.world.routes
+  [world/v2 _ _ _ _ _ _ _ _ _ [routing Routes _ _]] -> Routes)
 
 (define urdr.world.reduction-world
   [reduction World _ _] -> World)
@@ -202,39 +329,39 @@
       [null]))
 
 (define urdr.world.schedule
-  [world/v1
+  [world/v2
     Time NextId Pending Seed Streams Transcript Verdicts
-    Components Facts]
+    Components Facts Routing]
   At Kind Payload ->
     (let ValidTime (urdr.time.check At)
       (if (= (hd ValidTime) error)
           (urdr.world.error
-            [world/v1
+            [world/v2
               Time NextId Pending Seed Streams Transcript Verdicts
-              Components Facts]
+              Components Facts Routing]
             [105 110 118 97 108 105 100 45 116 105 109 101]
             [null])
           (let Order (hd (tl (urdr.time.compare At Time)))
             (if (< Order 0)
                 (urdr.world.error
-                  [world/v1
+                  [world/v2
                     Time NextId Pending Seed Streams Transcript Verdicts
-                    Components Facts]
+                    Components Facts Routing]
                   [115 116 97 108 101 45 101 118 101 110 116]
                   [null])
                 (if (not (urdr.world.event-valid?
                            Seed Kind Payload))
                     (urdr.world.error
-                      [world/v1
+                      [world/v2
                         Time NextId Pending Seed Streams
-                        Transcript Verdicts Components Facts]
+                        Transcript Verdicts Components Facts Routing]
                       [105 110 118 97 108 105 100 45 101 118 101 110 116]
                       [null])
                 (if (not (urdr.world.event-order-valid? Kind Payload))
                     (urdr.world.error
-                      [world/v1
+                      [world/v2
                         Time NextId Pending Seed Streams
-                        Transcript Verdicts Components Facts]
+                        Transcript Verdicts Components Facts Routing]
                       [99 104 111 105 99 101 45 97 108 116 101 114 110
                        97 116 105 118 101 115 45 111 114 100 101 114]
                       [null])
@@ -243,7 +370,7 @@
                                 (urdr.time.successor NextId)))
                          Input [schedule At Kind Payload]
                       [reduction
-                        [world/v1
+                        [world/v2
                           Time
                           Next
                           (urdr.world.insert-event Event Pending)
@@ -252,28 +379,40 @@
                           (append Transcript [Input])
                           Verdicts
                           Components
-                          Facts]
+                          Facts
+                          Routing]
                         []
                         []]))))))))
 
+\\ Advancing to a strictly later logical time opens a fresh routed-
+\\ delivery budget; same-time advances (several events at one instant)
+\\ keep the running count, which is what makes an unbounded same-time
+\\ cascade finite.
+(define urdr.world.routing-advanced
+  [routing Routes Limit Count] Time At ->
+    (if (> (hd (tl (urdr.time.compare At Time))) 0)
+        [routing Routes Limit (urdr.int.zero)]
+        [routing Routes Limit Count]))
+
 (define urdr.world.advance
-  [world/v1
+  [world/v2
     Time NextId [] Seed Streams Transcript Verdicts
-    Components Facts] ->
+    Components Facts Routing] ->
     (urdr.world.error
-      [world/v1
+      [world/v2
         Time NextId [] Seed Streams Transcript Verdicts
-        Components Facts]
+        Components Facts Routing]
       [110 111 45 112 101 110 100 105 110 103 45 101 118 101 110 116]
       [null])
-  [world/v1
+  [world/v2
     Time NextId [[event Id At Kind Payload] | Rest]
-    Seed Streams Transcript Verdicts Components Facts] ->
+    Seed Streams Transcript Verdicts Components Facts Routing] ->
     (let Advanced
-      [world/v1
+      [world/v2
         At NextId Rest Seed Streams
         (append Transcript [[advance-to-next-event]])
-        Verdicts Components Facts]
+        Verdicts Components Facts
+        (urdr.world.routing-advanced Routing Time At)]
       (urdr.world.dispatch Advanced Id At Kind Payload)))
 
 (define urdr.world.command-value
@@ -305,16 +444,16 @@
 (define urdr.world.dispatch
   World Id At command Payload ->
     [reduction World [(urdr.world.command-value Id At Payload)] []]
-  [world/v1
+  [world/v2
     Time NextId Pending Seed Streams Transcript Verdicts
-    Components Facts]
+    Components Facts Routing]
   Id At property-equals [property PropertyId Actual Expected] ->
     (let Equal (urdr.world.canonical-equal Actual Expected)
       (if (= (hd Equal) error)
           (urdr.world.error
-            [world/v1
+            [world/v2
               Time NextId Pending Seed Streams Transcript Verdicts
-              Components Facts]
+              Components Facts Routing]
             [105 110 118 97 108 105 100 45 99 97 110 111 110 105 99
              97 108 45 118 97 108 117 101]
             [null])
@@ -324,11 +463,11 @@
                 [symbol [70 65 73 76]]
             )
             [reduction
-              [world/v1
+              [world/v2
                 Time NextId Pending Seed Streams Transcript
                 (append Verdicts
                   [[verdict PropertyId Result Id At]])
-                Components Facts]
+                Components Facts Routing]
               []
               []])))
   World Id At choice
@@ -453,20 +592,121 @@
     (urdr.world.component-commit
       World Id At Name Handler Meta State Facts Choices))
 
+\\ The router (ADR 0007 D4). Deliveries for one commit are computed
+\\ first — (route declaration order, fact emission order), node targets
+\\ fanned out in registry (canonical component-name) order — and the
+\\ cascade budget is checked against their count before any state
+\\ change, so an over-budget step alters nothing.
 (define urdr.world.component-commit
-  [world/v1
+  [world/v2
     Time NextId Pending Seed Streams Transcript Verdicts
-    Components Facts]
+    Components Facts [routing Routes Limit Count]]
+  Id At Name Handler Meta State NewFacts Choices ->
+    (urdr.world.commit-deliveries
+      [world/v2
+        Time NextId Pending Seed Streams Transcript Verdicts
+        Components Facts [routing Routes Limit Count]]
+      Id At Name Handler Meta State NewFacts Choices
+      (urdr.world.route-deliveries
+        Routes Name NewFacts Components [])))
+
+(define urdr.world.commit-deliveries
+  [world/v2
+    Time NextId Pending Seed Streams Transcript Verdicts
+    Components Facts [routing Routes Limit Count]]
+  Id At Name Handler Meta State NewFacts Choices Deliveries ->
+    (let NewCount
+         (urdr.int.raw.add
+           Count (urdr.world.list-count Deliveries))
+      (if (> (urdr.int.raw.compare NewCount Limit) 0)
+          (urdr.world.error
+            [world/v2
+              Time NextId Pending Seed Streams Transcript Verdicts
+              Components Facts [routing Routes Limit Count]]
+            (urdr.component.code "route-cascade-exceeded")
+            (urdr.world.component-detail Name [null]))
+          (urdr.world.commit-enqueued
+            (urdr.world.route-enqueue Deliveries At NextId Pending)
+            [world/v2
+              Time NextId Pending Seed Streams Transcript Verdicts
+              Components Facts [routing Routes Limit NewCount]]
+            Id At Name Handler Meta State NewFacts Choices))))
+
+(define urdr.world.commit-enqueued
+  [queued NewNextId NewPending]
+  [world/v2
+    Time NextId Pending Seed Streams Transcript Verdicts
+    Components Facts Routing]
   Id At Name Handler Meta State NewFacts Choices ->
     [reduction
-      [world/v1
-        Time NextId Pending Seed Streams Transcript Verdicts
+      [world/v2
+        Time NewNextId NewPending Seed Streams Transcript Verdicts
         (urdr.world.component-put
           [component Name Handler State Meta] Components)
         (append Facts
-          (urdr.world.fact-values Id At Name NewFacts))]
+          (urdr.world.fact-values Id At Name NewFacts))
+        Routing]
       []
       (urdr.world.component-choice-values Id At Name Choices)])
+
+\\ Every routed delivery becomes an ordinary component pending event at
+\\ the current logical time with a fresh id, ordered among same-time
+\\ events by (time, id) exactly as a scheduled one would be. The value
+\\ was proved canonical by the component door and the target name was
+\\ proved registered at construction, so no schedule-door re-check is
+\\ needed, and the transcript records nothing: replay re-derives the
+\\ same enqueues from the same routes.
+(define urdr.world.route-enqueue
+  [] At NextId Pending -> [queued NextId Pending]
+  [[deliver Target Value] | Rest] At NextId Pending ->
+    (urdr.world.route-enqueue
+      Rest
+      At
+      (hd (tl (urdr.time.successor NextId)))
+      (urdr.world.insert-event
+        [event NextId At component [component-input Target Value]]
+        Pending)))
+
+\\ Deliveries accumulate reversed and are put back in order once, so the
+\\ nested walk stays tail recursive.
+(define urdr.world.route-deliveries
+  [] Name NewFacts Components Acc -> (urdr.canonical.rev Acc)
+  [[route Fact From Target] | Rest] Name NewFacts Components Acc ->
+    (urdr.world.route-deliveries
+      Rest Name NewFacts Components
+      (urdr.world.route-match
+        Fact From Target Name NewFacts Components Acc))
+  _ Name NewFacts Components Acc -> (urdr.canonical.rev Acc))
+
+(define urdr.world.route-match
+  Fact From Target From NewFacts Components Acc ->
+    (urdr.world.route-facts Fact Target NewFacts Components Acc)
+  Fact From Target Name NewFacts Components Acc -> Acc)
+
+(define urdr.world.route-facts
+  Fact Target [] Components Acc -> Acc
+  Fact Target [[fact Fact Value] | Rest] Components Acc ->
+    (urdr.world.route-facts
+      Fact Target Rest Components
+      (urdr.world.route-resolve Target Value Components Acc))
+  Fact Target [_ | Rest] Components Acc ->
+    (urdr.world.route-facts Fact Target Rest Components Acc))
+
+\\ A node target fans out to every component whose META node matches, in
+\\ registry order; entries are consed in that order and the caller's
+\\ single reversal restores it.
+(define urdr.world.route-resolve
+  [component Id] Value Components Acc -> [[deliver Id Value] | Acc]
+  [node N] Value Components Acc ->
+    (urdr.world.route-node N Value Components Acc))
+
+(define urdr.world.route-node
+  N Value [] Acc -> Acc
+  N Value [[component CName _ _ Meta] | Rest] Acc ->
+    (if (= (urdr.component.meta-node-value Meta) [symbol N])
+        (urdr.world.route-node N Value Rest [[deliver CName Value] | Acc])
+        (urdr.world.route-node N Value Rest Acc))
+  N Value _ Acc -> Acc)
 
 (define urdr.world.path-compare
   [path SubA ActorA PurposeA _] [path SubB ActorB PurposeB _] ->
@@ -511,9 +751,9 @@
       Rest (urdr.int.raw.subtract Index (urdr.int.one))))
 
 (define urdr.world.choose
-  [world/v1
+  [world/v2
     Time NextId Pending Seed Streams Transcript Verdicts
-    Components Facts]
+    Components Facts Routing]
   Id At Subsystem Actor Purpose Alternatives ->
     (let Path [path Subsystem Actor Purpose (urdr.int.zero)]
          Counter (urdr.world.path-counter Path Streams)
@@ -522,16 +762,16 @@
          Bound (urdr.world.list-count Alternatives)
       (if (= (hd Stream) error)
           (urdr.world.error
-            [world/v1
+            [world/v2
               Time NextId Pending Seed Streams Transcript Verdicts
-              Components Facts]
+              Components Facts Routing]
             [105 110 118 97 108 105 100 45 112 114 110 103 45 112
              97 116 104]
             [null])
           (urdr.world.choose-sample
-            [world/v1
+            [world/v2
               Time NextId Pending Seed Streams Transcript Verdicts
-              Components Facts]
+              Components Facts Routing]
             Id At Subsystem Actor Purpose Alternatives
             (urdr.prng.sample (hd (tl Stream)) Bound)))))
 
@@ -542,9 +782,9 @@
       [112 114 110 103 45 115 97 109 112 108 101 45 102 97 105
        108 101 100]
       [null])
-  [world/v1
+  [world/v2
     Time NextId Pending Seed Streams Transcript Verdicts
-    Components Facts]
+    Components Facts Routing]
   Id At Subsystem Actor Purpose Alternatives
   [ok [sample Index
         [stream _ _ _ _ _ NextCounter]
@@ -554,9 +794,9 @@
                        [path Subsystem Actor Purpose NextCounter]
                        Streams)
       [reduction
-        [world/v1
+        [world/v2
           Time NextId Pending Seed NextStreams Transcript Verdicts
-          Components Facts]
+          Components Facts Routing]
         []
         [(urdr.world.choice-value
            Id At Alternatives Selected Coordinates)]]))
@@ -647,10 +887,43 @@
     [(urdr.world.component-value Name State) |
      (urdr.world.component-values Rest)])
 
+(define urdr.world.route-target-value
+  [component Id] -> [symbol Id]
+  [node N] -> [record [[[110 111 100 101] [symbol N]]]])
+
+(define urdr.world.route-value
+  [route Fact From Target] ->
+    [record
+      [[[102 97 99 116] [symbol Fact]]
+       [[102 114 111 109] [symbol From]]
+       [[116 111] (urdr.world.route-target-value Target)]]])
+
+(define urdr.world.route-values
+  [] -> []
+  [Route | Rest] ->
+    [(urdr.world.route-value Route) |
+     (urdr.world.route-values Rest)])
+
+\\ Routing is world state, so the snapshot binds it whole: the rules and
+\\ limit as declared, and the current same-time delivery count, which
+\\ determines how much routed capacity the world has left at this
+\\ instant. The value itself is embedded rather than a digest — routes
+\\ are declaration-sized (a handful of three-symbol records bounded by
+\\ the scenario profile), so a digest would cost the same octets while
+\\ hiding the rules from a snapshot diff. Keys ascend count < limit <
+\\ rules; route keys ascend fact < from < to; both mirror the scenario
+\\ DSL's own rendering so no translation layer can drift.
+(define urdr.world.routing-value
+  [routing Routes Limit Count] ->
+    [record
+      [[[99 111 117 110 116] Count]
+       [[108 105 109 105 116] Limit]
+       [[114 117 108 101 115] [list (urdr.world.route-values Routes)]]]])
+
 (define urdr.world.snapshot-value
-  [world/v1
+  [world/v2
     Time NextId Pending Seed Streams Transcript Verdicts
-    Components Facts] ->
+    Components Facts Routing] ->
     [record
       [[[99 111 109 112 111 110 101 110 116 115]
         [list (urdr.world.component-values Components)]]
@@ -660,6 +933,8 @@
        [[112 101 110 100 105 110 103 45 101 118 101 110 116 45
          105 100 115]
         [list (urdr.world.pending-ids Pending)]]
+       [[114 111 117 116 101 115]
+        (urdr.world.routing-value Routing)]
        [[115 101 101 100] [bytes Seed]]
        [[115 116 114 101 97 109 45 99 111 117 110 116 101 114 115]
         [list (urdr.world.stream-values Streams)]]

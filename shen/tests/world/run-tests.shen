@@ -749,11 +749,18 @@
           (uwt.component-unknown?)
           (uwt.component-input-rejected?)
           (uwt.registry-rejected?)]
+         \\ The trace projection is encoded under the m1-large profile:
+         \\ the world/v2 snapshot binds the routing slot (ADR 0007 D4),
+         \\ which pushed the combined trace record past the m0 256-node
+         \\ ceiling. Profiles gate limits, not encoding, so the emitted
+         \\ bytes are unchanged for any value both profiles admit.
          (uwt.finish
            Checks
-           (urdr.canonical.encode-frame
+           (urdr.canonical.encode-frame-with-profile
+             (urdr.canonical.profile.m1-large)
              (uwt.trace-value Fixture))
-           (urdr.canonical.encode-frame
+           (urdr.canonical.encode-frame-with-profile
+             (urdr.canonical.profile.m1-large)
              (uwt.component-trace-value Components))))))
 
 (uwt.run)

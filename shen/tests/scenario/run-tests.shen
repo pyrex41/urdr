@@ -493,7 +493,7 @@ Any failure prints a FAIL| line and suppresses the marker. *\
   Count [error E] -> (do (output "FAIL|api|~A~%" E) false)
   Count [ok ApiCount] ->
     (let Total (+ Count ApiCount)
-      (if (= Total 97)
+      (if (= Total 103)
           (do
             (output "urdr-scenario: ~A/~A passed~%" Total Total)
             (output "ALL PASS~%")

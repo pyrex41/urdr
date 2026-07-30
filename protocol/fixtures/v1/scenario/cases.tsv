@@ -84,6 +84,20 @@ X|property-class-unsupported|invalid/property-class-unsupported.frame|scenario-p
 X|property-class-type|invalid/property-class-type.frame|scenario-property-class-type
 X|duplicate-property|invalid/duplicate-property.frame|scenario-duplicate-property
 X|property-order|invalid/property-order.frame|scenario-property-order
+# ADR 0007 D4: the optional `routes` field. Presence selects the
+# expected key list, so absence stays legal; the valid fixture routes to
+# both a component target and a node target. A target that is neither a
+# component symbol nor a [record [[node SYMBOL]]] is a shape error; an
+# undeclared from-component, target component, or target node is
+# unknown; a fact naming one of the nine reserved authorities is
+# rejected so a declaration cannot launder a kernel authority through
+# the router.
+V|routes|valid/routes.frame
+X|route-shape|invalid/route-shape.frame|scenario-route-shape
+X|route-unknown-from|invalid/route-unknown-from.frame|scenario-route-unknown-from
+X|route-unknown-target|invalid/route-unknown-target.frame|scenario-route-unknown-target
+X|route-unknown-node|invalid/route-unknown-node.frame|scenario-route-unknown-target
+X|route-reserved-fact|invalid/route-reserved-fact.frame|scenario-route-reserved-fact
 # ADR 0005 canonical-profile/m1-large boundary fixtures. scenario/v1 names
 # that profile statically; each frame below is a genuine scenario/v1 frame
 # whose boundary payload lives in one property's opaque spec value.
