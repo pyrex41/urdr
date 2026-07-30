@@ -179,9 +179,10 @@
   _ _ -> (urdr.model.common.error "counter-unknown-input"))
 
 (define urt.a-registry
-  -> [[component (urt.a-name)
+  -> [(urdr.component.entry
+        (urt.a-name)
         (/. S E (urt.counter S E))
-        (urt.counter-state (urdr.int.zero))]])
+        (urt.counter-state (urdr.int.zero)))])
 
 (define urt.world-of
   [ok World] -> World
@@ -199,6 +200,23 @@
   -> (urt.world-of
        (urdr.world.initial-with-components
          (urt.k "b-seed") (urt.a-registry))))
+
+\\ A world that differs from urt.a-world ONLY in one registry entry's
+\\ META model binding (ADR 0008): same seed, same handler, same state.
+\\ The snapshot binds META since ADR 0008, so this world's initial
+\\ snapshot digest — and therefore, transitively through preimage
+\\ field 3, its run id — must differ from urt.a-world's without any
+\\ new run-id preimage field.
+(define urt.a-registry-modeled
+  -> [[component (urt.a-name)
+        (/. S E (urt.counter S E))
+        (urt.counter-state (urdr.int.zero))
+        (urdr.component.meta (urt.k "m-alt") none)]])
+
+(define urt.a-world-modeled
+  -> (urt.world-of
+       (urdr.world.initial-with-components
+         (urt.k "a-seed") (urt.a-registry-modeled))))
 
 (define urt.bump
   N -> [record [[(urt.k "kind") (urt.big N)]]])
@@ -233,6 +251,60 @@
 
 (define urt.a-tampered
   -> [(urt.a-input 1) (urt.advance) (urt.a-input 9) (urt.advance)])
+
+\\ ---------------------------------------------------------------
+\\ Fixture A': a transcript carrying a pinned (selected) choice entry
+\\ (ADR 0007 D2). The coordinates are one well-formed
+\\ urdr-sha256-counter-v1 coordinate carried verbatim as evidence of
+\\ the driver-space draw; the world embeds them in the emitted choice
+\\ record without re-deriving them, so a hand-pinned coordinate is as
+\\ replayable as a strategy-drawn one.
+\\ ---------------------------------------------------------------
+
+(define urt.sel-alts -> [(urt.big 1) (urt.big 2)])
+
+(define urt.sel-coordinate
+  -> [coordinate urdr-sha256-counter-v1
+       (urt.k "a-seed") (urt.k "net") (urt.k "a") (urt.k "delivery")
+       (urdr.int.zero) (urdr.int.zero)])
+
+(define urt.sel-input
+  Selected ->
+    [schedule (urdr.int.zero) choice
+      [choice (urt.k "net") (urt.k "a") (urt.k "delivery")
+        (urt.sel-alts) Selected [(urt.sel-coordinate)]]])
+
+(define urt.sel-transcript
+  Selected -> [(urt.a-input 1) (urt.advance)
+               (urt.sel-input Selected) (urt.advance)])
+
+\\ A recorded artifact whose entry digests are recomputed over the
+\\ candidate transcript while the recorded EVENT stream is kept. The
+\\ transcript classification then passes, so verification must reach
+\\ the re-drive and judge the event streams themselves -- which is how
+\\ a selection tamper is exhibited as a divergence rather than as a
+\\ tampered-transcript rejection. (World STATE does not depend on
+\\ which alternative was selected -- the selection lives in the event
+\\ stream, not the snapshot -- so the event digests, not the state
+\\ root, are what catch it.)
+(define urt.reentried
+  Transcript [recorded _ _ Events ERoot SRoot] ->
+    (urt.reentried-digests
+      (urdr.replay.entry-digests Transcript) Events ERoot SRoot)
+  _ _ -> [not-a-recorded-artifact])
+
+(define urt.reentried-digests
+  [ok Digests] Events ERoot SRoot ->
+    (urt.reentried-root
+      (urdr.eventlog.root-of
+        (urdr.replay.n t-transcript-root) Digests)
+      Digests Events ERoot SRoot)
+  _ _ _ _ -> [not-a-recorded-artifact])
+
+(define urt.reentried-root
+  [ok Root] Digests Events ERoot SRoot ->
+    [recorded Digests Root Events ERoot SRoot]
+  _ _ _ _ _ -> [not-a-recorded-artifact])
 
 \\ ---------------------------------------------------------------
 \\ Fixture B: the end-to-end pipeline. A validated scenario becomes a
@@ -316,8 +388,10 @@
     (urdr.model.registry.from-scenario
       Scenario
       (urt.nk-baseline)
-      (/. S E (urt.counter S E))
-      (urt.counter-state (urdr.int.zero)))
+      (urdr.model.registry.kind-table
+        (/. S E (urt.counter S E))
+        (urt.counter-state (urdr.int.zero)))
+      [])
   Error -> Error)
 
 (define urt.b-world-of
@@ -721,6 +795,7 @@
 (define urt.rt-cases
   -> [(urt.roundtrip-case "fixture-a" (urt.a-transcript))
       (urt.roundtrip-case "fixture-b" (urt.b-transcript))
+      (urt.roundtrip-case "selected" (urt.sel-transcript (urt.big 2)))
       (urt.roundtrip-case "empty" [])
       (urt.roundtrip-reject "unknown-entry" [record []])
       (urt.roundtrip-reject "unknown-kind"
@@ -728,6 +803,21 @@
           [[(urt.k "at") (urdr.int.zero)]
            [(urt.k "kind") (urt.s "event-input")]
            [(urt.k "payload") [null]]
+           [(urt.k "type") (urt.s "schedule")]]])
+      \\ A selected entry whose coordinate record is not the PRNG's is
+      \\ a shape error on read, never a silent repair.
+      (urt.roundtrip-reject "selected-bad-coordinate"
+        [record
+          [[(urt.k "at") (urdr.int.zero)]
+           [(urt.k "kind") (urt.s "choice-input")]
+           [(urt.k "payload")
+            [record
+              [[(urt.k "actor") [bytes (urt.k "a")]]
+               [(urt.k "alternatives") [list (urt.sel-alts)]]
+               [(urt.k "coordinates") [list [[record []]]]]
+               [(urt.k "purpose") [bytes (urt.k "delivery")]]
+               [(urt.k "selected") (urt.big 2)]
+               [(urt.k "subsystem") [bytes (urt.k "net")]]]]]
            [(urt.k "type") (urt.s "schedule")]]])])
 
 \\ ---------------------------------------------------------------
@@ -952,6 +1042,39 @@
        ARecorded replay-entry-shape)])
 
 \\ ---------------------------------------------------------------
+\\ Case group 6b: pinned selections (ADR 0007 D2). (a) A run whose
+\\ transcript pins a selection logs, verifies, and re-drives to the
+\\ identical event stream; (b) the selection tampered to ANOTHER VALID
+\\ member is caught twice over -- against the honest artifact as
+\\ replay-transcript-tampered (entry digests moved), and against a
+\\ re-entried artifact as replay-event-divergence (the event streams
+\\ disagree; the state roots alone never would); (c) tampered to a
+\\ NON-member, the world's membership door refuses the recorded
+\\ decision during the re-drive and verification classifies it
+\\ replay-selection-divergence (section 3 of replay.shen: the artifact
+\\ matched, so the refusal is engine/artifact disagreement, DIVERGED
+\\ family).
+\\ ---------------------------------------------------------------
+
+(define urt.selected-cases
+  SelRecorded ->
+    [(urt.log-case "selected" (urt.a-world)
+       (urt.sel-transcript (urt.big 2)))
+     (urt.ok-case "selected-verified" (urt.a-world)
+       (urt.sel-transcript (urt.big 2)) SelRecorded)
+     (urt.div-case "selected-tampered" (urt.a-world)
+       (urt.sel-transcript (urt.big 1)) SelRecorded
+       replay-transcript-tampered)
+     (urt.div-case "selected-member-divergence" (urt.a-world)
+       (urt.sel-transcript (urt.big 1))
+       (urt.reentried (urt.sel-transcript (urt.big 1)) SelRecorded)
+       replay-event-divergence)
+     (urt.div-case "selected-not-member" (urt.a-world)
+       (urt.sel-transcript (urt.big 3))
+       (urt.reentried (urt.sel-transcript (urt.big 3)) SelRecorded)
+       replay-selection-divergence)])
+
+\\ ---------------------------------------------------------------
 \\ Case group 7: run-id mutations. Every field of the SPEC.md 4 preimage
 \\ must move the run id.
 \\ ---------------------------------------------------------------
@@ -1002,7 +1125,15 @@
      (urt.mut-case "requested-profile" Base
        (urdr.certificate.run-id-of
          (urt.engine) (urt.scenario-value) (urt.manifest)
-         (urt.a-world) ARoot (urt.k "modeled-strict")))])
+         (urt.a-world) ARoot (urt.k "modeled-strict")))
+     \\ ADR 0008 D3: a model binding is not a preimage field, yet it
+     \\ must move the run id — transitively, because the initial
+     \\ snapshot (field 3) binds every entry's META. This is the
+     \\ executable form of the no-new-preimage-field argument.
+     (urt.mut-case "model-binding" Base
+       (urdr.certificate.run-id-of
+         (urt.engine) (urt.scenario-value) (urt.manifest)
+         (urt.a-world-modeled) ARoot (urt.profile)))])
 
 \\ ---------------------------------------------------------------
 \\ Case group 8: marker derivation and certificates.
@@ -1086,6 +1217,39 @@
 (define urt.bad-verdict
   -> [record [[(urt.k "property") (urt.s "x")]]])
 
+\\ ADR 0008 D2: the certificate's `models` field is the sorted binding
+\\ list of the INITIAL world's registry. Checked against the expected
+\\ value (accessor and canonical field both), then pinned canonically
+\\ in the golden — not merely printed. The empty transcript keeps the
+\\ three drives this build performs cheap: the field comes from the
+\\ initial registry, not from the run.
+(define urt.expected-models
+  -> [list [[record
+              [[(urt.k "component") [symbol (urt.a-name)]]
+               [(urt.k "model") [symbol (urt.k "m-alt")]]
+               [(urt.k "node") [null]]]]]])
+
+(define urt.models-case
+  -> (/. Unit
+       (urt.models-h
+         (urdr.certificate.build
+           (urdr.certificate.spec
+             (urt.engine) (urt.scenario-value) (urt.manifest)
+             (urt.profile) (urt.a-world-modeled) [] [] [])))))
+
+(define urt.models-h
+  [ok Cert] ->
+    (if (and (= [list (urdr.certificate.models Cert)]
+                (urt.expected-models))
+             (= (urdr.certificate.field-of
+                  (urt.k "models") (urdr.certificate.value Cert))
+                [some (urt.expected-models)]))
+        (do
+          (output "CERT|models|~A~%" (urt.enc-hex (urt.expected-models)))
+          true)
+        (urt.fail "models" "field-mismatch"))
+  _ -> (urt.fail "models" "certificate-error"))
+
 (define urt.cert-cases
   Policy ->
     [(urt.cert-case "minimal" [] [(urt.open-baseline)]
@@ -1104,7 +1268,8 @@
          (urt.profile) (urt.a-world) (urt.a-transcript) [] [])
        certificate-engine-version)
      (urt.cert-reject "reject-spec-shape" [not-a-spec]
-       certificate-spec-shape)])
+       certificate-spec-shape)
+     (urt.models-case)])
 
 \\ ---------------------------------------------------------------
 \\ Case group 9: 100 consecutive replays (plan Wave E acceptance).
@@ -1157,6 +1322,9 @@
   -> (let ARecorded (urt.recorded-of
                       (urdr.replay.run (urt.a-world)
                         (urt.a-transcript)))
+          SelRecorded (urt.recorded-of
+                        (urdr.replay.run (urt.a-world)
+                          (urt.sel-transcript (urt.big 2))))
           EmptyRecorded (urt.recorded-of
                           (urdr.replay.run (urt.a-world) []))
           ARoot (urt.root-of
@@ -1174,6 +1342,7 @@
           (urt.rt-cases)
           [(urt.e2e-case)]
           (urt.div-cases ARecorded EmptyRecorded)
+          (urt.selected-cases SelRecorded)
           (urt.mut-cases Base ARoot TRoot)
           (urt.marker-cases Policy)
           (urt.cert-cases Policy)

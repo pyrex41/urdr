@@ -203,8 +203,10 @@
 
 (define umt.net-world
   -> (umt.world
-       [[component (umt.net-name)
-          (/. S E (urdr.model.net.step S E)) (umt.net-state)]]))
+       [(urdr.component.entry
+          (umt.net-name)
+          (/. S E (urdr.model.net.step S E))
+          (umt.net-state))]))
 
 (define umt.input
   Name Value ->
@@ -355,10 +357,14 @@
 
 (define umt.pair-world
   -> (umt.world
-       [[component (umt.fault-name)
-          (/. S E (urdr.model.fault.step S E)) (umt.fault-state)]
-        [component (umt.net-name)
-          (/. S E (urdr.model.net.step S E)) (umt.net-state)]]))
+       [(urdr.component.entry
+          (umt.fault-name)
+          (/. S E (urdr.model.fault.step S E))
+          (umt.fault-state))
+        (urdr.component.entry
+          (umt.net-name)
+          (/. S E (urdr.model.net.step S E))
+          (umt.net-state))]))
 
 (define umt.activate-inputs
   Kind Operation ->
@@ -484,8 +490,8 @@
 
 (define umt.forger-world
   -> (umt.world
-       [[component (umt.net-name)
-          (/. S E (umt.forger S E)) (umt.net-state)]]))
+       [(urdr.component.entry
+          (umt.net-name) (/. S E (umt.forger S E)) (umt.net-state))]))
 
 (define umt.forger-run
   -> (umt.drive
@@ -599,9 +605,10 @@
 
 (define umt.timer-world
   -> (umt.world
-       [[component (umt.timer-name)
+       [(urdr.component.entry
+          (umt.timer-name)
           (/. S E (urdr.model.timer.step S E))
-          (urdr.model.timer.initial)]]))
+          (urdr.model.timer.initial))]))
 
 (define umt.timer-input
   At Value -> (umt.input-at At (umt.timer-name) Value))
@@ -667,8 +674,10 @@
 
 (define umt.fault-world
   -> (umt.world
-       [[component (umt.fault-name)
-          (/. S E (urdr.model.fault.step S E)) (umt.fault-state)]]))
+       [(urdr.component.entry
+          (umt.fault-name)
+          (/. S E (urdr.model.fault.step S E))
+          (umt.fault-state))]))
 
 (define umt.fault-drive
   Inputs -> (umt.drive (umt.fault-world) Inputs))
@@ -724,7 +733,8 @@
 
 (define umt.process-world
   -> (umt.world
-       [[component (umt.process-name)
+       [(urdr.component.entry
+          (umt.process-name)
           (/. S E
             (urdr.model.fault.process
               (/. IS IE (umt.counter IS IE))
@@ -732,7 +742,7 @@
               S
               E))
           (urdr.model.fault.process-initial
-            (umt.counter-state (urdr.int.zero)))]]))
+            (umt.counter-state (urdr.int.zero))))]))
 
 (define umt.bump
   -> [record [[[107 105 110 100] [symbol [98 117 109 112]]]]])
@@ -789,23 +799,15 @@
 \\ resource profile, and a fully populated roster of all four component
 \\ kinds is already most of the 256-node budget. The M1 plan's own
 \\ measurement (ADR 0005) found the same ceiling from the other side.
-(define umt.scenario-value
-  -> [record
-       [[(umt.k "budget")
+(define umt.scenario-with
+  Components ->
+    [record
+      [[(umt.k "budget")
          [record
            [[(umt.k "max-events") (umt.big 100)]
             [(umt.k "max-runs") (umt.big 4)]
             [(umt.k "max-steps") (umt.big 100)]]]]
-        [(umt.k "components")
-         [list
-           [(umt.component-value (umt.s "fault-a") (umt.s "fault")
-              (umt.s "a"))
-            (umt.component-value (umt.s "net-a") (umt.s "net")
-              (umt.s "a"))
-            (umt.component-value (umt.s "proc-a") (umt.s "process")
-              (umt.s "b"))
-            (umt.component-value (umt.s "timer-a") (umt.s "timer")
-              (umt.s "a"))]]]
+        [(umt.k "components") [list Components]]
         [(umt.k "determinism") (umt.s "modeled")]
         [(umt.k "faults")
          [list
@@ -830,19 +832,35 @@
                 (umt.node-value 2 (umt.s "b"))]]]]]]
         [(umt.k "version") (umt.s "scenario/v1")]]])
 
+(define umt.scenario-value
+  -> (umt.scenario-with
+       [(umt.component-value (umt.s "fault-a") (umt.s "fault")
+          (umt.s "a"))
+        (umt.component-value (umt.s "net-a") (umt.s "net")
+          (umt.s "a"))
+        (umt.component-value (umt.s "proc-a") (umt.s "process")
+          (umt.s "b"))
+        (umt.component-value (umt.s "timer-a") (umt.s "timer")
+          (umt.s "a"))]))
+
 (define umt.scenario
   -> (urdr.scenario.validate (umt.scenario-value)))
 
 (define umt.registry
   -> (umt.registry-of (umt.scenario)))
 
+(define umt.default-kind-table
+  -> (urdr.model.registry.kind-table
+       (/. S E (umt.counter S E))
+       (umt.counter-state (urdr.int.zero))))
+
 (define umt.registry-of
   [ok Scenario] ->
     (urdr.model.registry.from-scenario
       Scenario
       (umt.baseline)
-      (/. S E (umt.counter S E))
-      (umt.counter-state (urdr.int.zero)))
+      (umt.default-kind-table)
+      [])
   Error -> Error)
 
 (define umt.registry-world
@@ -917,6 +935,457 @@
             (urdr.world.facts (umt.final Replay)) [])])
 
 \\ ---------------------------------------------------------------
+\\ Case 8b: per-component model binding and component identity
+\\ (ADR 0007 D3).
+\\
+\\ Two process components in one scenario are bound to DIFFERENT models
+\\ through the driver-facing model table; each model's init-builder
+\\ reads the roster record it was built for, so the two start from
+\\ different initial states; and each handler reads its own id and node
+\\ under the event's `self` key and emits them in a fact, proving the
+\\ reducer delivers identity per component. The registry fail-closed
+\\ paths — unknown model, malformed vocabulary, malformed fault
+\\ domains — are exercised alongside.
+\\ ---------------------------------------------------------------
+
+(define umt.component-model-value
+  Id Kind Model Node ->
+    [record
+      [[(umt.k "id") Id]
+       [(umt.k "kind") Kind]
+       [(umt.k "model") Model]
+       [(umt.k "node") Node]]])
+
+(define umt.model-scenario-value
+  -> (umt.scenario-with
+       [(umt.component-model-value (umt.s "proc-a") (umt.s "process")
+          (umt.s "left") (umt.s "a"))
+        (umt.component-model-value (umt.s "proc-b") (umt.s "process")
+          (umt.s "right") (umt.s "b"))]))
+
+\\ The handler reads its identity from the event and asserts it as a
+\\ fact. The fact value never uses the reserved name `self` as a key or
+\\ symbol; identity is re-asserted under `who`.
+(define umt.ident-handler
+  Tag State Event ->
+    [step
+      State
+      [[fact (urdr.canonical.string-bytes "ident")
+         [record
+           [[(umt.k "tag") (umt.s Tag)]
+            [(umt.k "who") (urdr.model.common.event-self Event)]]]]]
+      []])
+
+\\ Init-builders receive the full roster record plus the baseline, so
+\\ the initial state can name the component it belongs to.
+(define umt.model-init
+  N [component Id Kind Node Model] Baseline ->
+    [record
+      [[(umt.k "me") [symbol Id]]
+       [(umt.k "n") (umt.big N)]]])
+
+(define umt.model-table
+  -> [[(urdr.canonical.string-bytes "left")
+       [(/. S E (umt.ident-handler "left" S E))
+        (/. C B (umt.model-init 1 C B))]]
+      [(urdr.canonical.string-bytes "right")
+       [(/. S E (umt.ident-handler "right" S E))
+        (/. C B (umt.model-init 2 C B))]]])
+
+(define umt.model-registry-of
+  [ok Scenario] ->
+    (urdr.model.registry.from-scenario
+      Scenario
+      (umt.baseline)
+      (umt.default-kind-table)
+      (umt.model-table))
+  Error -> Error)
+
+(define umt.model-registry
+  -> (umt.model-registry-of
+       (urdr.scenario.validate (umt.model-scenario-value))))
+
+(define umt.model-world-result
+  -> (umt.model-world-result-of (umt.model-registry)))
+
+(define umt.model-world-result-of
+  [ok Registry] ->
+    (urdr.world.initial-with-components (umt.seed) Registry)
+  Error -> Error)
+
+(define umt.model-world
+  -> (umt.world-of (umt.model-world-result)))
+
+(define umt.model-built?
+  -> (and (= (hd (umt.model-registry)) ok)
+          (= (hd (umt.model-world-result)) ok)))
+
+(define umt.entry-states
+  [] -> []
+  [[component _ _ State _] | Rest] ->
+    [State | (umt.entry-states Rest)]
+  _ -> [])
+
+(define umt.model-initial-states
+  -> (umt.model-states-of (umt.model-registry)))
+
+(define umt.model-states-of
+  [ok Registry] -> [list (umt.entry-states Registry)]
+  Error -> [symbol [98 97 100]])
+
+(define umt.model-run
+  -> (umt.drive
+       (umt.model-world)
+       [(umt.input (urdr.canonical.string-bytes "proc-a") (umt.bump))
+        (umt.advance)
+        (umt.input (urdr.canonical.string-bytes "proc-b") (umt.bump))
+        (umt.advance)]))
+
+(define umt.model-facts-log
+  -> (urdr.world.facts (umt.final (umt.model-run))))
+
+(define umt.ident-who
+  Fact ->
+    (urdr.model.common.get
+      (urdr.model.common.get
+        Fact (urdr.canonical.string-bytes "value"))
+      (umt.k "who")))
+
+(define umt.ident-whos
+  [] -> []
+  [Fact | Rest] ->
+    [(umt.ident-who Fact) | (umt.ident-whos Rest)]
+  _ -> [])
+
+(define umt.self-record
+  Id Node ->
+    [record
+      [[(umt.k "id") (umt.s Id)]
+       [(umt.k "node") (umt.s Node)]]])
+
+\\ Each component observed exactly its own declared id and node.
+(define umt.identities-delivered?
+  -> (= (umt.ident-whos (umt.model-facts-log))
+        [(umt.self-record "proc-a" "a")
+         (umt.self-record "proc-b" "b")]))
+
+\\ Fail-closed registry paths.
+(define umt.unknown-model
+  -> (umt.unknown-model-of
+       (urdr.scenario.validate (umt.model-scenario-value))))
+
+(define umt.unknown-model-of
+  [ok Scenario] ->
+    (urdr.model.registry.from-scenario
+      Scenario (umt.baseline) (umt.default-kind-table) [])
+  Error -> Error)
+
+(define umt.broken-vocab
+  -> (umt.broken-vocab-of (umt.scenario)))
+
+(define umt.broken-vocab-of
+  [ok [scenario/v1 B C D F V O P R S T]] ->
+    (urdr.model.registry.from-scenario
+      [scenario/v1 B C D F [[bogus]] O P R S T]
+      (umt.baseline)
+      (umt.default-kind-table)
+      [])
+  Error -> Error)
+
+(define umt.broken-domains
+  -> (umt.broken-domains-of (umt.scenario)))
+
+(define umt.broken-domains-of
+  [ok [scenario/v1 B C D F V O P R S T]] ->
+    (urdr.model.registry.from-scenario
+      [scenario/v1 B C D [[bogus]] V O P R S T]
+      (umt.baseline)
+      (umt.default-kind-table)
+      [])
+  Error -> Error)
+
+\\ ---------------------------------------------------------------
+\\ Case 8c: declared fact routing (ADR 0007 D4).
+\\
+\\ The scenario declares routes; the kernel delivers. (a) A partition
+\\ activation's `mask` fact is routed to the net component and takes
+\\ effect with no hand-scheduling. (b) A crash activation's `crash`
+\\ fact is routed to a node target, fanning out to every process on
+\\ that node in canonical component-name order; each transitions to
+\\ crashed. (c) A routed fact whose handler emits a fact that routes
+\\ again cascades under the same-time cap. (d) An unbounded same-time
+\\ cascade fails closed with route-cascade-exceeded. (e) Facts matching
+\\ no route stay observations and enqueue nothing.
+\\
+\\ The hand-scheduled mask cases above (masked-run, registry-run) are
+\\ kept deliberately: they prove the manual path still works and that a
+\\ scenario without routes behaves exactly as before.
+\\ ---------------------------------------------------------------
+
+(define umt.node-target-value
+  Node -> [record [[(umt.k "node") Node]]])
+
+(define umt.route-value
+  Fact From To ->
+    [record
+      [[(umt.k "fact") Fact]
+       [(umt.k "from") From]
+       [(umt.k "to") To]]])
+
+\\ The routed scenario: a fault domain over {b} that can crash or
+\\ partition, a net component, and two processes on node b. The mask
+\\ route names a component; the crash route names a node, so the fan-out
+\\ order (proc-a before proc-b) is pinned by the trace digest.
+(define umt.routed-scenario-value
+  -> [record
+       [[(umt.k "budget")
+          [record
+            [[(umt.k "max-events") (umt.big 100)]
+             [(umt.k "max-runs") (umt.big 4)]
+             [(umt.k "max-steps") (umt.big 100)]]]]
+         [(umt.k "components")
+          [list
+            [(umt.component-value (umt.s "fault-a") (umt.s "fault")
+               (umt.s "a"))
+             (umt.component-value (umt.s "net-a") (umt.s "net")
+               (umt.s "a"))
+             (umt.component-value (umt.s "proc-a") (umt.s "process")
+               (umt.s "b"))
+             (umt.component-value (umt.s "proc-b") (umt.s "process")
+               (umt.s "b"))]]]
+         [(umt.k "determinism") (umt.s "modeled")]
+         [(umt.k "faults")
+          [list
+            [[record
+               [[(umt.k "id") (umt.s "d1")]
+                [(umt.k "kinds")
+                 [list [(umt.s "crash") (umt.s "partition")]]]
+                [(umt.k "members") [list [(umt.s "b")]]]]]]]]
+         [(umt.k "header-vocabulary")
+          [list
+            [(umt.field-value (umt.s "dst"))
+             (umt.field-value (umt.s "src"))]]]
+         [(umt.k "observations") [list []]]
+         [(umt.k "properties") [list []]]
+         [(umt.k "routes")
+          [list
+            [(umt.route-value
+               (umt.s "crash") (umt.s "fault-a")
+               (umt.node-target-value (umt.s "b")))
+             (umt.route-value
+               (umt.s "mask") (umt.s "fault-a") (umt.s "net-a"))]]]
+         [(umt.k "seed") [bytes (umt.seed)]]
+         [(umt.k "topology")
+          [record
+            [[(umt.k "links")
+              [list [(umt.link-value (umt.s "a") (umt.s "b"))]]]
+             [(umt.k "nodes")
+              [list
+                [(umt.node-value 1 (umt.s "a"))
+                 (umt.node-value 2 (umt.s "b"))]]]]]]
+         [(umt.k "version") (umt.s "scenario/v1")]]])
+
+(define umt.routed-scenario
+  -> (urdr.scenario.validate (umt.routed-scenario-value)))
+
+(define umt.routed-world-result
+  -> (umt.routed-world-of (umt.routed-scenario)))
+
+(define umt.routed-world-of
+  [ok Scenario] ->
+    (urdr.model.registry.world-from-scenario
+      (umt.seed)
+      Scenario
+      (umt.baseline)
+      (umt.default-kind-table)
+      [])
+  Error -> Error)
+
+(define umt.routed-world
+  -> (umt.world-of (umt.routed-world-result)))
+
+(define umt.routed-built?
+  -> (and (= (hd (umt.routed-scenario)) ok)
+          (= (hd (umt.routed-world-result)) ok)))
+
+\\ (a) Partition without hand-plumbing: the extra advance dispatches the
+\\ routed mask delivery; nothing schedules it.
+(define umt.routed-mask-inputs
+  -> (urdr.model.common.append
+       (umt.activate-inputs
+         (urdr.model.fault.n.partition)
+         (urdr.model.fault.n.activate))
+       (urdr.model.common.append
+         [(umt.advance)]
+         (urdr.model.common.append
+           (umt.send-inputs 1 2 (umt.a) (umt.b))
+           (umt.deliver-inputs
+             (urdr.model.net.n.deliver) 0 (umt.a) (umt.b))))))
+
+(define umt.routed-mask-run
+  -> (umt.drive (umt.routed-world) (umt.routed-mask-inputs)))
+
+\\ (e) Every fact of the routed run stays in the observation log — the
+\\ router copies a matched fact's value into a pending input, it never
+\\ moves the fact — and a quiescent pending queue proves the unrouted
+\\ ones (activated, and the net model's own facts) enqueued nothing.
+(define umt.fact-name-symbols
+  [] -> []
+  [Fact | Rest] ->
+    [[symbol
+       (urdr.model.common.symbol-bytes
+         (urdr.model.common.get
+           Fact (urdr.canonical.string-bytes "name")))]
+     | (umt.fact-name-symbols Rest)]
+  _ -> [])
+
+(define umt.routed-fact-names
+  -> [list (umt.fact-name-symbols
+             (urdr.world.facts (umt.final (umt.routed-mask-run))))])
+
+(define umt.routed-quiescent?
+  -> (= (urdr.world.pending (umt.final (umt.routed-mask-run))) []))
+
+\\ (b) Crash routed to a node target: both processes on b crash, in
+\\ canonical component-name order, and a later input to a crashed
+\\ process is absorbed as fact-log evidence.
+(define umt.routed-crash-inputs
+  -> (urdr.model.common.append
+       (umt.activate-inputs
+         (urdr.model.fault.n.crash)
+         (urdr.model.fault.n.activate))
+       [(umt.advance)
+        (umt.advance)
+        (umt.input (urdr.canonical.string-bytes "proc-a") (umt.bump))
+        (umt.advance)]))
+
+(define umt.routed-crash-run
+  -> (umt.drive (umt.routed-world) (umt.routed-crash-inputs)))
+
+(define umt.entry-state-of
+  Name World ->
+    (umt.entry-state-value
+      (urdr.world.component-find
+        Name (urdr.world.components World))))
+
+(define umt.entry-state-value
+  [component _ _ State _] -> State
+  _ -> [symbol [98 97 100]])
+
+(define umt.process-status
+  Name World ->
+    [symbol
+      (urdr.model.common.symbol-bytes
+        (urdr.model.common.get
+          (umt.entry-state-of Name World)
+          (urdr.model.fault.n.status)))])
+
+(define umt.routed-crash-statuses
+  -> (let Final (umt.final (umt.routed-crash-run))
+       [list
+         [(umt.process-status
+            (urdr.canonical.string-bytes "proc-a") Final)
+          (umt.process-status
+            (urdr.canonical.string-bytes "proc-b") Final)]]))
+
+\\ (c)/(d) Cascades. The relay emits a `hop` fact routed back to itself
+\\ with a decremented counter, so one scheduled input cascades entirely
+\\ at one logical time; the world-level cap (64 this wave) bounds it.
+(define umt.relay-n -> [110])
+
+(define umt.relay-name -> [114 101 108 97 121 45 97])
+
+(define umt.hop -> [104 111 112])
+
+(define umt.relay-state
+  N -> [record [[(umt.relay-n) N]]])
+
+(define umt.relay
+  State Event ->
+    (umt.relay-step
+      (urdr.model.common.integer
+        (urdr.model.common.get
+          (urdr.model.common.event-input Event) (umt.relay-n)))))
+
+(define umt.relay-step
+  none -> (urdr.model.common.error "relay-input")
+  N ->
+    (if (urdr.int.raw.zero? N)
+        [step (umt.relay-state N) [] []]
+        [step
+          (umt.relay-state N)
+          [[fact (umt.hop)
+             (umt.relay-state
+               (urdr.int.raw.subtract N (urdr.int.one)))]]
+          []]))
+
+(define umt.relay-world
+  -> (umt.world-of
+       (urdr.world.initial-with-routes
+         (umt.seed)
+         [(urdr.component.entry
+            (umt.relay-name)
+            (/. S E (umt.relay S E))
+            (umt.relay-state (urdr.int.zero)))]
+         [[route (umt.hop) (umt.relay-name)
+            [component (umt.relay-name)]]])))
+
+(define umt.advances
+  0 -> []
+  N -> [(umt.advance) | (umt.advances (- N 1))])
+
+(define umt.cascade-inputs
+  N Advances ->
+    [(umt.input (umt.relay-name) (umt.relay-state (umt.big N)))
+     | (umt.advances Advances)])
+
+\\ Three routed deliveries, well under the cap; the final advance
+\\ dispatches the n=0 delivery, which emits nothing, so the run ends
+\\ quiescent.
+(define umt.cascade-run
+  -> (umt.drive (umt.relay-world) (umt.cascade-inputs 3 4)))
+
+\\ n=100 would need 100 same-time deliveries; the 65th enqueue crosses
+\\ the cap of 64 and the commit that would perform it fails closed with
+\\ nothing changed. 66 advances are supplied; replay stops at the error.
+(define umt.cascade-exceeded
+  -> (umt.drive (umt.relay-world) (umt.cascade-inputs 100 66)))
+
+\\ The cap is per logical time: n=64 saturates the budget exactly at
+\\ time 0 (65 dispatches: the seed input plus 64 routed deliveries),
+\\ then a fresh input at time 1 routes again. Without the reset the
+\\ time-1 delivery would be the 65th count and fail; with it the run
+\\ ends quiescent.
+(define umt.cascade-reset-inputs
+  -> (urdr.model.common.append
+       (umt.cascade-inputs 64 65)
+       [(umt.input-at (umt.big 1) (umt.relay-name)
+          (umt.relay-state (umt.big 1)))
+        (umt.advance)
+        (umt.advance)]))
+
+(define umt.cascade-reset-run
+  -> (umt.drive (umt.relay-world) (umt.cascade-reset-inputs)))
+
+(define umt.cascade-reset-ok?
+  -> (and (= (hd (umt.cascade-reset-run)) replay)
+          (= (urdr.world.pending (umt.final (umt.cascade-reset-run)))
+             [])))
+
+\\ The world door re-checks routes at construction: a route naming a
+\\ component the registry does not hold is refused before any reduction,
+\\ so the dispatcher can never fail to find a routed target.
+(define umt.route-unregistered
+  -> (urdr.world.initial-with-routes
+       (umt.seed)
+       [(urdr.component.entry
+          (umt.relay-name)
+          (/. S E (umt.relay S E))
+          (umt.relay-state (urdr.int.zero)))]
+       [[route (umt.hop) (umt.relay-name)
+          [component [103 104 111 115 116]]]]))
+
+\\ ---------------------------------------------------------------
 \\ Case 9: the witness bridge.
 \\ ---------------------------------------------------------------
 
@@ -958,7 +1427,11 @@
     (umt.masked-net-result
       (urdr.model.net.step
         (umt.net-state)
-        (urdr.world.component-event (urdr.int.zero) Value))))
+        (urdr.world.component-event
+          (urdr.int.zero)
+          Value
+          (umt.net-name)
+          (urdr.component.meta-empty)))))
 
 (define umt.masked-net-result
   [step State _ _] -> State
@@ -1153,6 +1626,40 @@
       (umt.ok "registry-blocked"
         (umt.registry-delivered (umt.registry-run)))])
 
+(define umt.model-cases
+  -> [(umt.token "model-table-built"
+        (if (umt.model-built?) "ok" "FAILED"))
+      (umt.ok "model-initial-states" (umt.model-initial-states))
+      (umt.digest "model-identity-facts" (umt.model-facts-log))
+      (umt.token "model-identity-delivered"
+        (if (umt.identities-delivered?) "ok" "FAILED"))
+      (umt.reject "registry-unknown-model"
+        (umt.unknown-model) "registry-unknown-model")
+      (umt.reject "registry-vocab-shape"
+        (umt.broken-vocab) "registry-vocab-shape")
+      (umt.reject "registry-domains-shape"
+        (umt.broken-domains) "registry-domains-shape")])
+
+(define umt.route-cases
+  -> [(umt.token "route-scenario-built"
+        (if (umt.routed-built?) "ok" "FAILED"))
+      (umt.digest "route-mask-trace" (umt.trace (umt.routed-mask-run)))
+      (umt.ok "route-mask-blocked"
+        (umt.registry-delivered (umt.routed-mask-run)))
+      (umt.ok "route-fact-names" (umt.routed-fact-names))
+      (umt.token "route-unrouted-quiescent"
+        (if (umt.routed-quiescent?) "ok" "FAILED"))
+      (umt.digest "route-crash-trace"
+        (umt.trace (umt.routed-crash-run)))
+      (umt.ok "route-crash-status" (umt.routed-crash-statuses))
+      (umt.digest "route-cascade-trace" (umt.trace (umt.cascade-run)))
+      (umt.reject "route-cascade-exceeded"
+        (umt.cascade-exceeded) "route-cascade-exceeded")
+      (umt.token "route-cascade-reset"
+        (if (umt.cascade-reset-ok?) "ok" "FAILED"))
+      (umt.reject "route-unknown-component"
+        (umt.route-unregistered) "route-unknown-component")])
+
 (define umt.witness-cases
   -> [(umt.ok "witness-confirmed"
         (urdr.netkat.witness.value (umt.confirmed)))
@@ -1185,7 +1692,11 @@
            (urdr.model.common.append
              (umt.fault-cases)
              (urdr.model.common.append
-               (umt.glue-cases) (umt.witness-cases)))))))
+               (umt.glue-cases)
+               (urdr.model.common.append
+                 (umt.model-cases)
+                 (urdr.model.common.append
+                   (umt.route-cases) (umt.witness-cases)))))))))
 
 (define umt.run
   -> (let Results (umt.emit-all (umt.cases) [])

@@ -10,6 +10,7 @@
      MUT|NAME|REJECTED          mutation that must be rejected
      REPLAY|NAME|OK|HEX         minimized transcript replays
      SEED|NAME|MATCH|HEX        same seed reproducibility
+     CHOICE|small-of|OK         software-integer index decoding
      EXPLORE-SHRINK CASES: N
      ALL PASS
 
@@ -122,9 +123,10 @@
 (define ues.world
   -> (let R (urdr.world.initial-with-components
               (ues.seed)
-              [[component (ues.comp-name)
+              [(urdr.component.entry
+                 (ues.comp-name)
                  (/. S E (ues.counter S E))
-                 (ues.counter-state 0)]])
+                 (ues.counter-state 0))])
        (if (= (hd R) ok) (hd (tl R)) R)))
 
 (define ues.advance -> [advance-to-next-event])
@@ -138,8 +140,11 @@
 \\ ---------------------------------------------------------------
 \\ Alternatives and menus
 \\
-\\ Alternatives are canonically ordered records with a bias `tag` and a
-\\ `value`. Alphabetical tag/value order is fixed by construction.
+\\ Alternatives are records with a bias `tag` and a `value`, listed in
+\\ strictly ascending canonical encoding order — the order the reducer
+\\ (and now urdr.search.menu) enforces. Canonical atoms are
+\\ length-prefixed, so this is NOT alphabetical order: "3:red" encodes
+\\ before "4:blue".
 \\ ---------------------------------------------------------------
 
 (define ues.alt
@@ -154,7 +159,7 @@
   -> [(ues.alt "fault" "inject") (ues.alt "other" "noop")])
 
 (define ues.color-alts
-  -> [(ues.alt "other" "blue") (ues.alt "other" "red")])
+  -> [(ues.alt "other" "red") (ues.alt "other" "blue")])
 
 (define ues.delay-alts
   -> [(ues.alt "timing" "d0") (ues.alt "timing" "d1")])
@@ -179,10 +184,11 @@
 \\ Failure is present iff the transcript schedules a choice whose
 \\ alternatives include the inject alternative AND the run is the
 \\ "found" path: we detect inject by looking for a fault-purpose choice
-\\ that was built when inject was selected. Because the decision
-\\ transcript only carries the menu (not the selection), the explore
-\\ BUILD function embeds the selection as a command record tagged with
-\\ shrink-class, and the oracle reads that.
+\\ that was built when inject was selected. The choice entries built by
+\\ urdr.search.schedule-input now pin the selection themselves
+\\ (ADR 0007 D2), but the oracle keeps reading the command markers the
+\\ BUILD function emits: an oracle over marker commands stays valid for
+\\ hand-built drawn-form transcripts (ues.failing-transcript) too.
 \\ ---------------------------------------------------------------
 
 \\ Witness is the properties-layer canonical form: a bare symbol
@@ -336,6 +342,43 @@
   -> (hd (tl (urdr.certificate.failure-signature
                (ues.fail-verdicts)))))
 
+\\ The same failing path with the choice entries PINNED (selected form,
+\\ ADR 0007 D2). Shrink classifies choice entries by purpose; the pinned
+\\ arity must classify exactly like the drawn one, or the fault/delay
+\\ passes would skip pinned entries and minimization would stall at the
+\\ un-deletable choices. The coordinate is a hand-pinned well-formed
+\\ urdr-sha256-counter-v1 tuple: coordinates are evidence carried
+\\ verbatim, so replay never re-derives them.
+(define ues.coordinate
+  -> [coordinate urdr-sha256-counter-v1
+       (ues.seed) (ues.sub) (ues.actor) (ues.k "fault")
+       (urdr.int.zero) (urdr.int.zero)])
+
+(define ues.pinned-choice-input
+  Purpose Alts Selected ->
+    [schedule (urdr.int.zero) choice
+      [choice (ues.sub) (ues.actor) (ues.k Purpose) Alts Selected
+        [(ues.coordinate)]]])
+
+(define ues.pinned-failing-transcript
+  -> [(ues.pinned-choice-input "fault" (ues.fault-alts)
+        (ues.alt "fault" "inject"))
+      (ues.advance)
+      (ues.cmd "inject" "fault")
+      (ues.advance)
+      (ues.pinned-choice-input "schedule" (ues.color-alts)
+        (ues.alt "other" "blue"))
+      (ues.advance)
+      (ues.cmd "blue" "schedule")
+      (ues.advance)
+      (ues.pinned-choice-input "delay" (ues.delay-alts)
+        (ues.alt "timing" "d0"))
+      (ues.advance)
+      (ues.cmd "d0" "delay")
+      (ues.advance)
+      (ues.bump 1)
+      (ues.advance)])
+
 \\ ---------------------------------------------------------------
 \\ Case group 1: choice records
 \\ ---------------------------------------------------------------
@@ -460,6 +503,34 @@
   Before [error Code _] -> (ues.fail "shrink" Code)
   Before _ -> (ues.fail "shrink" "minimize-error"))
 
+\\ Minimizing the pinned variant must land on the same minimum as the
+\\ drawn one: pinned choice entries classify by purpose (shrink.shen's
+\\ selected-arity clause) and are deleted exactly like drawn entries.
+(define ues.shrink-pinned-case
+  -> (/. Unit
+       (let Before (ues.count (ues.pinned-failing-transcript))
+            Min (urdr.shrink.minimize
+                  (ues.original-sig)
+                  (/. T (ues.eval-transcript T))
+                  (ues.pinned-failing-transcript))
+         (ues.shrink-pinned-h Before Min))))
+
+(define ues.shrink-pinned-h
+  Before [ok After] ->
+    (let Alen (ues.count After)
+         Still (ues.has-inject? After)
+         OkSig (urdr.shrink.accepts?
+                 (ues.original-sig)
+                 (hd (tl (ues.eval-transcript After))))
+      (do
+        (output "SHRINK|pinned|~A|~A|~A~%"
+          Before Alen (and Still OkSig (< Alen Before)))
+        (if (and Still OkSig (< Alen Before))
+            true
+            (ues.fail "shrink-pinned" "did-not-minimize"))))
+  Before [error Code _] -> (ues.fail "shrink-pinned" Code)
+  Before _ -> (ues.fail "shrink-pinned" "minimize-error"))
+
 \\ ---------------------------------------------------------------
 \\ Case group 5: mutation that drops the fault is rejected
 \\ ---------------------------------------------------------------
@@ -522,6 +593,35 @@
   Transcript [error Code Detail] ->
     (ues.fail "replay" Code)
   Transcript _ -> (ues.fail "replay" "run-error"))
+
+\\ Explore transcripts are pinned by construction (ADR 0007 D2):
+\\ urdr.search.schedule-input emits the SELECTED choice form, carrying
+\\ the strategy's selection and PRNG coordinates. Replaying the found
+\\ transcript through the world proves the pinned entries pass the
+\\ schedule door (membership included) and dispatch without drawing.
+(define ues.replay-explore-case
+  -> (/. Unit
+       (ues.replay-explore-h
+         (urdr.search.explore
+           (ues.seed) 16 baseline (ues.menus)
+           (/. Cs (ues.build-transcript Cs))
+           (/. T (ues.eval-transcript T))))))
+
+(define ues.replay-explore-h
+  [ok Result] ->
+    (ues.replay-explore-run
+      (urdr.replay.run
+        (ues.world) (urdr.search.result-transcript Result)))
+  _ -> (ues.fail "replay-explore" "explore-error"))
+
+(define ues.replay-explore-run
+  [ok Run] ->
+    (do
+      (output "REPLAY|explore|true|~A~%"
+        (ues.hex (urdr.replay.run-transcript-root Run)))
+      true)
+  [error Code _] -> (ues.fail "replay-explore" Code)
+  _ -> (ues.fail "replay-explore" "run-error"))
 
 \\ Also pin that the original failing transcript replays.
 (define ues.replay-orig-case
@@ -592,6 +692,34 @@
   _ _ -> (ues.fail "seed-boundary" "explore-error"))
 
 \\ ---------------------------------------------------------------
+\\ Case group 8: index decoding of software integers (regression:
+\\ ADR 0003 limbs are little-endian, so [big 1 [5000 1]] is 15000,
+\\ not 50000001; indices >= 10000 must survive the decode and
+\\ anything past the host-safe window must fail closed).
+\\ ---------------------------------------------------------------
+
+(define ues.small-of-case
+  -> (/. Unit
+       (let Ok (ues.small-of-checks)
+         (do
+           (output "CHOICE|small-of|~A~%" Ok)
+           (if Ok true (ues.fail "small-of" "wrong-decode"))))))
+
+(define ues.small-of-checks
+  -> (ues.both
+       (ues.both
+         (= (urdr.search.small-of (ues.big 15000)) 15000)
+         (= (urdr.search.small-of [big 1 [5000 1]]) 15000))
+       (ues.both
+         (ues.both
+           (= (urdr.search.small-of (ues.big 99990000)) 99990000)
+           (= (urdr.search.small-of (urdr.int.zero)) 0))
+         (ues.both
+           (= (urdr.search.small-of 7) 7)
+           (= (urdr.int.small-of [big 1 [0 0 1]])
+              [error unsafe-host-integer])))))
+
+\\ ---------------------------------------------------------------
 \\ Driver
 \\ ---------------------------------------------------------------
 
@@ -607,11 +735,14 @@
         (ues.strat-cases)
         (ues.explore-cases)
         [(ues.shrink-case)
+         (ues.shrink-pinned-case)
          (ues.mut-case)
          (ues.replay-case)
+         (ues.replay-explore-case)
          (ues.replay-orig-case)
          (ues.seed-case)
-         (ues.seed-boundary-case)]]))
+         (ues.seed-boundary-case)
+         (ues.small-of-case)]]))
 
 (define ues.run
   -> (let Cases (ues.cases)

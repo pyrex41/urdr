@@ -44,9 +44,13 @@
 (define uwt.purpose
   -> [116 105 101 45 98 114 101 97 107])
 
+\\ Strictly ascending in canonical encoding order, which the reducer now
+\\ requires of scheduled choice alternatives. Canonical atoms are
+\\ length-prefixed, so beta ("4:beta") encodes before alpha ("5:alpha");
+\\ alphabetical order would be rejected.
 (define uwt.alternatives
-  -> [[symbol [97 108 112 104 97]]
-      [symbol [98 101 116 97]]
+  -> [[symbol [98 101 116 97]]
+      [symbol [97 108 112 104 97]]
       [symbol [103 97 109 109 97]]])
 
 (define uwt.property-id
@@ -260,6 +264,142 @@
              [105 110 118 97 108 105 100 45 101 118 101 110 116])
            (= (urdr.world.reduction-world Reduction) Final))))
 
+\\ Positional selection makes alternative order semantic: a scheduled
+\\ choice whose alternatives are not strictly ascending in canonical
+\\ encoding order — a permutation (alphabetical [alpha beta] encodes
+\\ descending) or a duplicate — is rejected fail-closed under its own
+\\ stable code, choice-alternatives-order, before any state change.
+(define uwt.order-code
+  -> [99 104 111 105 99 101 45 97 108 116 101 114 110 97 116 105 118
+      101 115 45 111 114 100 101 114])
+
+(define uwt.choice-order-rejected?
+  Fixture Alternatives ->
+    (let W0 (uwt.initial Fixture)
+         Reduction (urdr.world.reduce
+                     W0
+                     [schedule (uwt.base Fixture) choice
+                       [choice
+                         (uwt.subsystem)
+                         (uwt.actor-a)
+                         (uwt.purpose)
+                         Alternatives]])
+      (and (uwt.error? Reduction (uwt.order-code))
+           (= (urdr.world.reduction-world Reduction) W0))))
+
+(define uwt.unordered-choice-rejected?
+  Fixture ->
+    (uwt.choice-order-rejected?
+      Fixture
+      [[symbol [97 108 112 104 97]] [symbol [98 101 116 97]]]))
+
+(define uwt.duplicate-choice-rejected?
+  Fixture ->
+    (uwt.choice-order-rejected?
+      Fixture
+      [[symbol [98 101 116 97]] [symbol [98 101 116 97]]]))
+
+\\ Pinned selections (ADR 0007 D2): the round-trip theorem for the
+\\ selected choice form. Draw a choice as today, then in a fresh world
+\\ schedule the SELECTED form carrying that draw's selection and
+\\ coordinates. The two dispatches must emit byte-identical choice
+\\ records -- the transcript, not the PRNG, is the replay authority --
+\\ while the selected dispatch leaves every per-path stream counter
+\\ untouched (the draw already happened in driver space; replaying it
+\\ must not perturb other draws on the same path). Both record digests
+\\ are printed so the equality is pinned in the golden, not merely
+\\ asserted.
+(define uwt.selected-inputs
+  Fixture Selected Coordinates ->
+    [[schedule (uwt.late Fixture) choice
+       [choice (uwt.subsystem) (uwt.actor-b) (uwt.purpose)
+         (uwt.alternatives) Selected Coordinates]]
+     [advance-to-next-event]])
+
+\\ The same draw urdr.world.choose performs for actor-b at counter 0,
+\\ made outside the world: the selection and coordinates a driver
+\\ records into a pinned transcript.
+(define uwt.drawn-sample
+  -> (urdr.prng.sample
+       (hd (tl (urdr.prng.stream
+                 (uwt.seed) (uwt.subsystem) (uwt.actor-b)
+                 (uwt.purpose) (urdr.int.zero))))
+       (urdr.world.list-count (uwt.alternatives))))
+
+(define uwt.selected-replay
+  Fixture [ok [sample Index _ Coordinates]] ->
+    (urdr.world.replay
+      (uwt.initial Fixture)
+      (uwt.selected-inputs
+        Fixture
+        (urdr.world.nth-big (uwt.alternatives) Index)
+        Coordinates))
+  _ _ -> none)
+
+(define uwt.drawn-replay
+  Fixture ->
+    (urdr.world.replay
+      (uwt.initial Fixture)
+      [[schedule (uwt.late Fixture) choice (uwt.choice (uwt.actor-b))]
+       [advance-to-next-event]]))
+
+(define uwt.first-choice
+  Replay ->
+    (hd (urdr.world.reduction-choices
+          (uwt.nth 1 (urdr.world.replay-reductions Replay)))))
+
+(define uwt.record-digest-hex
+  Record ->
+    (uwt.record-digest-hex-of (urdr.canonical.encode-payload Record)))
+
+(define uwt.record-digest-hex-of
+  [ok Bytes] ->
+    (hd (tl (urdr.bytes.hex (hd (tl (urdr.sha256 Bytes))))))
+  _ -> "unencodable")
+
+(define uwt.selected-roundtrip?
+  Fixture ->
+    (let Drawn (uwt.drawn-replay Fixture)
+         Selected (uwt.selected-replay Fixture (uwt.drawn-sample))
+         DrawnRec (uwt.first-choice Drawn)
+         SelectedRec (uwt.first-choice Selected)
+      (do
+        (output "WORLD-CHOICE-DRAWN ~A~%"
+          (uwt.record-digest-hex DrawnRec))
+        (output "WORLD-CHOICE-SELECTED ~A~%"
+          (uwt.record-digest-hex SelectedRec))
+        (and (= DrawnRec SelectedRec)
+             (and (= (urdr.world.streams
+                       (urdr.world.replay-world Selected))
+                     [])
+                  (= (urdr.world.streams
+                       (urdr.world.replay-world Drawn))
+                     [[path (uwt.subsystem) (uwt.actor-b)
+                        (uwt.purpose) (uwt.big 1)]]))))))
+
+\\ A selection that is not a member of its own menu (by canonical
+\\ encoding) is refused at the schedule door, before any state change,
+\\ under its own stable code.
+(define uwt.selection-code
+  -> [99 104 111 105 99 101 45 115 101 108 101 99 116 105 111 110 45
+      110 111 116 45 109 101 109 98 101 114])
+
+(define uwt.selected-not-member-rejected?
+  Fixture ->
+    (let W0 (uwt.initial Fixture)
+         Reduction (urdr.world.reduce
+                     W0
+                     [schedule (uwt.base Fixture) choice
+                       [choice
+                         (uwt.subsystem)
+                         (uwt.actor-a)
+                         (uwt.purpose)
+                         (uwt.alternatives)
+                         [symbol [100 101 108 116 97]]
+                         []]])
+      (and (uwt.error? Reduction (uwt.selection-code))
+           (= (urdr.world.reduction-world Reduction) W0))))
+
 \\ Modeled-component fixtures (ADR 0004 Decision 1). One well-behaved
 \\ component and one variant per banned authority, each of which must be
 \\ rejected fail-closed rather than repaired.
@@ -322,11 +462,24 @@
 (define uwt.shapeless
   State _ -> [stepped State])
 
-\\ Misbehaving: echoes the logical time it was given back as a fact, which
-\\ claims a time advance.
+\\ Misbehaving: writes logical time back as a fact key, which claims a
+\\ time advance. (It no longer echoes the whole event: the event record
+\\ now carries the reserved `self` key first, which would mask the time
+\\ claim under scan order.)
 (define uwt.ticker
   State Event ->
-    [step State [[fact [116 105 99 107 101 100] Event]] []])
+    [step
+      State
+      [[fact [116 105 99 107 101 100]
+         [record [[[116 105 109 101] [null]]]]]]
+      []])
+
+\\ Misbehaving: echoes the event it was handed back as a fact, which
+\\ claims the reserved `self` identity key (ADR 0007 D3) — the first
+\\ reserved name the scan meets in input < self < time < type order.
+(define uwt.selfish
+  State Event ->
+    [step State [[fact [101 99 104 111 101 100] Event]] []])
 
 \\ Misbehaving: offers alternatives out of canonical order.
 (define uwt.unordered
@@ -348,9 +501,9 @@
 \\ component alone. Registry entries ascend strictly by name.
 (define uwt.pair-registry
   Name Handler ->
-    [[component (uwt.counter-name)
-       (/. S E (uwt.counter S E)) (uwt.zero-state)]
-     [component Name Handler (uwt.zero-state)]])
+    [(urdr.component.entry
+       (uwt.counter-name) (/. S E (uwt.counter S E)) (uwt.zero-state))
+     (urdr.component.entry Name Handler (uwt.zero-state))])
 
 (define uwt.pair-world
   Name Handler ->
@@ -416,7 +569,7 @@
                  99 104 111 105 99 101]]]]])
 
 (define uwt.entry-state
-  [component _ _ State] -> State
+  [component _ _ State _] -> State
   _ -> none)
 
 (define uwt.component-state-of
@@ -489,9 +642,10 @@
 (define uwt.claim
   Name -> [symbol (urdr.canonical.string-bytes Name)])
 
-\\ The four banned authorities of ADR 0004 Decision 1, one fixture each:
-\\ direct event emission, identifier allocation, an implied time advance,
-\\ and a non-canonical result. The reducer names the claimed authority.
+\\ The banned authorities of ADR 0004 Decision 1 (extended by ADR 0007
+\\ D3's `self`), one fixture each: direct event emission, identifier
+\\ allocation, an implied time advance, an identity claim, and a
+\\ non-canonical result. The reducer names the claimed authority.
 (define uwt.misbehaviour?
   -> (and (uwt.fail-closed?
             (uwt.emitter-name)
@@ -508,11 +662,16 @@
                       (/. S E (uwt.ticker S E))
                       "component-fact-authority"
                       (uwt.claim "time"))
-                    (uwt.fail-closed?
-                      [110 111 110 99 97 110 111 110 105 99 97 108]
-                      (/. S E (uwt.noncanonical S E))
-                      "component-state-invalid"
-                      [null])))))
+                    (and (uwt.fail-closed?
+                           [115 101 108 102 105 115 104]
+                           (/. S E (uwt.selfish S E))
+                           "component-fact-authority"
+                           (uwt.claim "self"))
+                         (uwt.fail-closed?
+                           [110 111 110 99 97 110 111 110 105 99 97 108]
+                           (/. S E (uwt.noncanonical S E))
+                           "component-state-invalid"
+                           [null]))))))
 
 (define uwt.malformed?
   -> (and (uwt.fail-closed?
@@ -570,14 +729,38 @@
                (urdr.world.snapshot-frame W0)))))
 
 (define uwt.duplicate-registry
-  -> [[component (uwt.counter-name)
-        (/. S E (uwt.counter S E)) (uwt.zero-state)]
-      [component (uwt.counter-name)
-        (/. S E (uwt.counter S E)) (uwt.zero-state)]])
+  -> [(urdr.component.entry
+        (uwt.counter-name) (/. S E (uwt.counter S E)) (uwt.zero-state))
+      (urdr.component.entry
+        (uwt.counter-name) (/. S E (uwt.counter S E)) (uwt.zero-state))])
 
 (define uwt.bad-state-registry
-  -> [[component (uwt.counter-name)
-        (/. S E (uwt.counter S E)) [oops]]])
+  -> [(urdr.component.entry
+        (uwt.counter-name) (/. S E (uwt.counter S E)) [oops])])
+
+\\ META is validated at registration exactly like state: a malformed
+\\ META record and a bad META field carry their own stable codes.
+(define uwt.bad-meta-registry
+  Meta ->
+    [[component (uwt.counter-name)
+       (/. S E (uwt.counter S E)) (uwt.zero-state) Meta]])
+
+(define uwt.meta-rejected?
+  -> (and (= (urdr.world.initial-with-components
+               (uwt.seed)
+               (uwt.bad-meta-registry [record [[[110 111 100 101] [null]]]]))
+             [error (urdr.canonical.string-bytes
+                      "component-meta-shape")
+                    [null]])
+          (= (urdr.world.initial-with-components
+               (uwt.seed)
+               (uwt.bad-meta-registry
+                 [record
+                   [[[109 111 100 101 108] [null]]
+                    [[110 111 100 101] [symbol [116 105 109 101]]]]]))
+             [error (urdr.canonical.string-bytes
+                      "component-meta-value")
+                    [null]])))
 
 (define uwt.registry-rejected?
   -> (and (= (urdr.world.initial-with-components
@@ -585,11 +768,75 @@
              [error (urdr.canonical.string-bytes
                       "component-registry-order")
                     [symbol (uwt.counter-name)]])
-          (= (urdr.world.initial-with-components
-               (uwt.seed) (uwt.bad-state-registry))
-             [error (urdr.canonical.string-bytes
-                      "component-state-invalid")
-                    [null]])))
+          (and (= (urdr.world.initial-with-components
+                    (uwt.seed) (uwt.bad-state-registry))
+                  [error (urdr.canonical.string-bytes
+                           "component-state-invalid")
+                         [null]])
+               (uwt.meta-rejected?))))
+
+\\ The review's exact collision scenario (ADR 0008 D1, consensus
+\\ finding #4): two runs whose components emit DIFFERENT facts from
+\\ IDENTICAL states. Under the old fact-count binding the two snapshots
+\\ were byte-identical (same count, same states); the facts root must
+\\ separate them, while the component states still compare equal — the
+\\ divergence is in the observable output alone.
+(define uwt.probe-name
+  -> [112 114 111 98 101])
+
+(define uwt.fact-probe
+  Value State _ ->
+    [step State [[fact [111 117 116] Value]] []])
+
+(define uwt.probe-world
+  Value ->
+    (hd (tl (urdr.world.initial-with-components
+              (uwt.seed)
+              [(urdr.component.entry
+                 (uwt.probe-name)
+                 (/. S E (uwt.fact-probe Value S E))
+                 (uwt.zero-state))]))))
+
+(define uwt.probe-final
+  Value ->
+    (urdr.world.replay-world
+      (urdr.world.replay
+        (uwt.probe-world Value)
+        (uwt.component-inputs (uwt.probe-name) 1))))
+
+(define uwt.facts-divergence?
+  -> (let A (uwt.probe-final [symbol [97 45 102 97 99 116]])
+          B (uwt.probe-final [symbol [98 45 102 97 99 116]])
+       (and (= (uwt.component-state-of (uwt.probe-name) A)
+               (uwt.component-state-of (uwt.probe-name) B))
+            (not (= (urdr.world.snapshot-frame A)
+                    (urdr.world.snapshot-frame B))))))
+
+\\ Model identity in the snapshot (ADR 0008 D2): the components binding
+\\ carries each entry's META verbatim — {meta {model, node}, name,
+\\ state-digest}, keys ascending — so the snapshot commits to WHICH
+\\ model ran the component, not merely to the state it reached.
+(define uwt.snapshot-components
+  [record
+    [[[99 111 109 112 111 110 101 110 116 115] [list Values]] | _]] ->
+    Values
+  _ -> none)
+
+(define uwt.meta-visible?
+  -> (let Meta (urdr.component.meta [109 45 120] [110 45 49])
+          World (hd (tl (urdr.world.initial-with-components
+                          (uwt.seed)
+                          [[component (uwt.counter-name)
+                             (/. S E (uwt.counter S E))
+                             (uwt.zero-state)
+                             Meta]])))
+       (= (uwt.snapshot-components
+            (urdr.world.snapshot-value World))
+          [[record
+             [[[109 101 116 97] Meta]
+              [[110 97 109 101] [bytes (uwt.counter-name)]]
+              [[115 116 97 116 101 45 100 105 103 101 115 116]
+               (urdr.world.state-digest-value (uwt.zero-state))]]]])))
 
 (define uwt.component-trace-value
   Fixture ->
@@ -627,7 +874,7 @@
           (do
             (output "WORLD-TRACE ~A~%" Hex)
             (output "WORLD-COMPONENT-TRACE ~A~%" ComponentHex)
-            (output "WORLD TESTS: 21/21 PASS~%")
+            (output "WORLD TESTS: 26/26 PASS~%")
             (output "ALL PASS~%")
             true))
         (do
@@ -654,6 +901,10 @@
           (uwt.invalid-time? Fixture)
           (and (uwt.stale-and-rollback? Fixture)
                (uwt.invalid-event? Fixture))
+          (and (uwt.unordered-choice-rejected? Fixture)
+               (uwt.duplicate-choice-rejected? Fixture))
+          (uwt.selected-roundtrip? Fixture)
+          (uwt.selected-not-member-rejected? Fixture)
           (= (length (uwt.creductions Components)) 4)
           (uwt.component-run? Components)
           (uwt.component-isolation? Components)
@@ -663,12 +914,21 @@
           (uwt.component-own-error?)
           (uwt.component-unknown?)
           (uwt.component-input-rejected?)
-          (uwt.registry-rejected?)]
+          (uwt.registry-rejected?)
+          (uwt.facts-divergence?)
+          (uwt.meta-visible?)]
+         \\ The trace projection is encoded under the m1-large profile:
+         \\ the world/v2 snapshot binds the routing slot (ADR 0007 D4),
+         \\ which pushed the combined trace record past the m0 256-node
+         \\ ceiling. Profiles gate limits, not encoding, so the emitted
+         \\ bytes are unchanged for any value both profiles admit.
          (uwt.finish
            Checks
-           (urdr.canonical.encode-frame
+           (urdr.canonical.encode-frame-with-profile
+             (urdr.canonical.profile.m1-large)
              (uwt.trace-value Fixture))
-           (urdr.canonical.encode-frame
+           (urdr.canonical.encode-frame-with-profile
+             (urdr.canonical.profile.m1-large)
              (uwt.component-trace-value Components))))))
 
 (uwt.run)

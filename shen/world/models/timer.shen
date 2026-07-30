@@ -17,7 +17,7 @@ State
   [record [[deadlines [list ENTRY ...]]]]
   ENTRY [record [[due DEADLINE] [id [symbol TIMER-ID]]]]
 
-The key is `due`, not `time`: `time` is one of the eight authorities
+The key is `due`, not `time`: `time` is one of the nine authorities
 reserved to the world kernel, and a component that puts it in a
 structural position of its own state is rejected. The current logical
 time arrives on the event and is read only.

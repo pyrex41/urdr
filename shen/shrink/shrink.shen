@@ -141,8 +141,14 @@
                     schedule
                     schedule)))))
 
+\\ Both choice payload arities classify by purpose: the drawn form
+\\ [choice Sub Actor Purpose Alts] and the selected form of ADR 0007 D2
+\\ [choice Sub Actor Purpose Alts Selected Coords]. The selection and
+\\ its coordinates are opaque to the shrinker -- classification never
+\\ reads them -- so a pinned entry shrinks exactly like a drawn one.
 (define urdr.shrink.payload-class
   [choice _ _ Purpose _] -> (urdr.shrink.purpose-class Purpose)
+  [choice _ _ Purpose _ _ _] -> (urdr.shrink.purpose-class Purpose)
   [component-input Name _] ->
     (if (urdr.shrink.bytes= Name (urdr.shrink.n s-fault))
         fault

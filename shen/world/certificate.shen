@@ -59,6 +59,15 @@
 \\   run started from. It already binds every registered component's
 \\   state through a per-component digest (world.shen), so a different
 \\   starting component state is a different run id.
+\\ - The `models` field (ADR 0008) adds NO preimage field. The snapshot
+\\   value binds every registry entry's META — model and node — since
+\\   ADR 0008, and field 3 hashes that snapshot, so two runs that
+\\   differ only in a model binding already have different run ids
+\\   transitively. A separate preimage field would be a second,
+\\   unvalidated copy of the same fact, exactly the redundancy the
+\\   per-record run-id note above forbids. (This mirrors the
+\\   baseline-descriptor reasoning in section 2: what the initial
+\\   snapshot already commits to is not hashed twice.)
 \\ - The immutable artifact manifest is a caller-supplied canonical
 \\   value. An abstract run has no VM images or binaries to pin, so the
 \\   Wave E fixtures pass [list []]; the field exists so the preimage
@@ -174,6 +183,7 @@
 \\            [event-root            [bytes DIGEST]]
 \\            [input-transcript-root [bytes DIGEST]]
 \\            [markers               [list [symbol ...] ...]]
+\\            [models                [list [record ...] ...]]
 \\            [replay                [record ...]]
 \\            [requested-profile     [bytes ...]]
 \\            [run-id                [bytes DIGEST]]
@@ -183,13 +193,27 @@
 \\            [transcript-root       [bytes DIGEST]]
 \\            [verdict-summary       [record ...]]
 \\            [verdicts              SLOT]
-\\            [version               [symbol urdr-certificate-v1]]]]
+\\            [version               [symbol urdr-certificate-v2]]]]
 \\
-\\ The seventeen keys ascend in unsigned-ASCII order, so the certificate
-\\ is itself a canonical value. `verdicts` is a list slot
+\\ The eighteen keys ascend in unsigned-ASCII order (markers < models <
+\\ replay: 97 < 111 at octet 2, 109 < 114 at octet 1), so the
+\\ certificate is itself a canonical value. `verdicts` is a list slot
 \\ (urdr.eventlog.list-slot): inline when it fits the m0 profile,
 \\ content-addressed element-wise when it does not, which is the SPEC.md
 \\ 20 rule applied to the certificate's own body.
+\\
+\\ `models` (ADR 0008) is the model bindings of the INITIAL world's
+\\ registry: one [record [[component [symbol ID]] [model [symbol ...] |
+\\ [null]] [node [symbol ...] | [null]]]] per registered component, in
+\\ registry order — the registry ascends strictly by component name, so
+\\ the list is sorted ascending by component and no host iteration
+\\ order can reach it. The INITIAL registry is the right authority:
+\\ bindings never change during a run (component-put preserves META),
+\\ and the initial world is what the run id's field 3 hashes. The
+\\ addition of this key is why `version` moved from urdr-certificate-v1
+\\ to urdr-certificate-v2: an 18-key certificate is a schema change,
+\\ and a v1 reader must fail on it rather than silently ignore the
+\\ field it does not know.
 \\
 \\ `replay` is urdr.replay.verified-value on success and
 \\ urdr.replay.error-value on failure; the discriminator is the presence
@@ -207,6 +231,7 @@
 \\   run-id         CERT -> OCTETS
 \\   status         CERT -> OCTETS
 \\   markers        CERT -> [OCTETS ...]
+\\   models         CERT -> [list [record ...] ...] (section 5)
 \\   log            CERT -> the event log
 \\   recorded       CERT -> the recorded replay artifact
 \\   run-id-of      ENGINE SCENARIO MANIFEST INITIAL TRANSCRIPT-ROOT
@@ -256,6 +281,8 @@
      45 114 111 111 116]
   k-markers ->
     [109 97 114 107 101 114 115]
+  k-models ->
+    [109 111 100 101 108 115]
   k-replay ->
     [114 101 112 108 97 121]
   k-requested-profile ->
@@ -294,6 +321,12 @@
     [112 114 111 112 101 114 116 121]
   k-marker ->
     [109 97 114 107 101 114]
+  k-component ->
+    [99 111 109 112 111 110 101 110 116]
+  k-model ->
+    [109 111 100 101 108]
+  k-node ->
+    [110 111 100 101]
   w-modeled-world-only ->
     [109 111 100 101 108 101 100 45 119 111 114 108 100 45 111 110
      108 121]
@@ -315,9 +348,10 @@
      103]
   w-uncertified ->
     [117 110 99 101 114 116 105 102 105 101 100]
-  w-certificate-v1 ->
+  \\ v2: the `models` key joined the schema (ADR 0008; section 5).
+  w-certificate-v2 ->
     [117 114 100 114 45 99 101 114 116 105 102 105 99 97 116 101
-     45 118 49]
+     45 118 50]
   t-verdict-list ->
     [117 114 100 114 45 118 101 114 100 105 99 116 45 108 105 115
      116 45 118 49]
@@ -404,6 +438,40 @@
          (and (urdr.canonical.symbol? Bs)
               (urdr.certificate.markers-valid? Rest)))
   _ -> false)
+
+\\ ---------------------------------------------------------------
+\\ Model bindings (section 5, ADR 0008)
+\\ ---------------------------------------------------------------
+
+\\ One binding record per registry entry of the INITIAL world, in
+\\ registry order — already strictly ascending by component name, so
+\\ the sorted-list requirement of section 5 is met by construction and
+\\ needs no re-sort here. Keys ascend component < model < node. The
+\\ META accessors return [null] or a canonical symbol, both of which
+\\ were validated at registration, so the record is canonical by
+\\ construction. Only the two well-formed shapes are matched: a
+\\ malformed registry cannot reach this point (urdr.replay.run refuses
+\\ an invalid world before the certificate is assembled), and matching
+\\ anything looser would repair what should have failed.
+(define urdr.certificate.model-binding-value
+  [component Name _ _ Meta] ->
+    [record
+      [[(urdr.certificate.n k-component) [symbol Name]]
+       [(urdr.certificate.n k-model)
+        (urdr.component.meta-model-value Meta)]
+       [(urdr.certificate.n k-node)
+        (urdr.component.meta-node-value Meta)]]])
+
+(define urdr.certificate.models-value
+  Initial ->
+    (urdr.certificate.model-binding-values
+      (urdr.world.components Initial)))
+
+(define urdr.certificate.model-binding-values
+  [] -> []
+  [Entry | Rest] ->
+    [(urdr.certificate.model-binding-value Entry) |
+     (urdr.certificate.model-binding-values Rest)])
 
 \\ ---------------------------------------------------------------
 \\ Run id (section 1)
@@ -611,12 +679,21 @@
 \\ Status (section 3)
 \\ ---------------------------------------------------------------
 
-\\ Only the three engine-level disagreements are DIVERGED. A transcript
+\\ Only the four engine-level disagreements are DIVERGED. A transcript
 \\ that is not the recorded one is evidence about the artifact.
+\\ replay-selection-divergence joins the family with ADR 0007 D2's
+\\ pinned selections: it only arises after the candidate transcript
+\\ matched the recorded entry digests, when the engine's membership
+\\ door refuses a selection that same artifact records as decided --
+\\ the engine and the artifact disagreeing about the run, exactly what
+\\ DIVERGED names. (Codes for transcripts that fail to match at all --
+\\ truncated/extended/reordered/tampered -- stay outside: they say the
+\\ artifact is not the recorded one, nothing about the engine.)
 (define urdr.certificate.divergence?
   replay-event-divergence -> true
   replay-state-divergence -> true
   replay-event-count -> true
+  replay-selection-divergence -> true
   _ -> false)
 
 (define urdr.certificate.status-of
@@ -703,6 +780,9 @@
       ScenarioDigest ManifestDigest RunId Run Engine Profile Initial
       Transcript Verdicts Markers))
 
+\\ The model bindings are read off the initial world HERE, at the last
+\\ point the build path still holds it: after this call the initial
+\\ world is dropped and only its derived commitments travel on.
 (define urdr.certificate.build-slot
   [error Code Detail] _ _ _ _ _ _ _ _ _ _ -> [error Code Detail]
   [ok Slot] ScenarioDigest ManifestDigest RunId Run Engine Profile
@@ -710,6 +790,7 @@
     (urdr.certificate.build-verify
       (urdr.replay.verify
         Initial Transcript (urdr.replay.recorded Run))
+      (urdr.certificate.models-value Initial)
       Slot ScenarioDigest ManifestDigest RunId Run Engine Profile
       Verdicts Markers))
 
@@ -719,14 +800,14 @@
 \\ than a tautology, and it is the same comparison the 100-replay
 \\ identity check performs, once.
 (define urdr.certificate.build-verify
-  Verification Slot ScenarioDigest ManifestDigest RunId Run Engine
-  Profile Verdicts Markers ->
+  Verification Models Slot ScenarioDigest ManifestDigest RunId Run
+  Engine Profile Verdicts Markers ->
     (urdr.certificate.assemble
       (urdr.certificate.verified? Verification)
       (urdr.certificate.replay-value Verification)
       (urdr.certificate.verification-code Verification)
-      Slot ScenarioDigest ManifestDigest RunId Run Engine Profile
-      Verdicts Markers))
+      Models Slot ScenarioDigest ManifestDigest RunId Run Engine
+      Profile Verdicts Markers))
 
 (define urdr.certificate.verified?
   [ok _] -> true
@@ -741,16 +822,16 @@
   [error Code Detail] -> (urdr.replay.error-value Code Detail))
 
 (define urdr.certificate.assemble
-  Verified ReplayValue Code Slot ScenarioDigest ManifestDigest RunId
-  Run Engine Profile Verdicts Markers ->
+  Verified ReplayValue Code Models Slot ScenarioDigest ManifestDigest
+  RunId Run Engine Profile Verdicts Markers ->
     (urdr.certificate.finish
       (urdr.eventlog.abstract? (urdr.replay.run-log Run))
-      Verified ReplayValue Code Slot ScenarioDigest ManifestDigest
-      RunId Run Engine Profile Verdicts Markers))
+      Verified ReplayValue Code Models Slot ScenarioDigest
+      ManifestDigest RunId Run Engine Profile Verdicts Markers))
 
 (define urdr.certificate.finish
-  Clean Verified ReplayValue Code Slot ScenarioDigest ManifestDigest
-  RunId Run Engine Profile Verdicts Markers ->
+  Clean Verified ReplayValue Code Models Slot ScenarioDigest
+  ManifestDigest RunId Run Engine Profile Verdicts Markers ->
     [ok
       [certificate
         RunId
@@ -761,6 +842,7 @@
         ScenarioDigest
         ManifestDigest
         (urdr.certificate.markers-value Markers)
+        Models
         ReplayValue
         Slot
         (urdr.certificate.summary-value Verdicts)
@@ -771,26 +853,32 @@
 \\ ---------------------------------------------------------------
 
 (define urdr.certificate.run-id
-  [certificate RunId _ _ _ _ _ _ _ _ _ _ _] -> RunId)
+  [certificate RunId _ _ _ _ _ _ _ _ _ _ _ _] -> RunId)
 
 (define urdr.certificate.status
-  [certificate _ Status _ _ _ _ _ _ _ _ _ _] -> Status)
+  [certificate _ Status _ _ _ _ _ _ _ _ _ _ _] -> Status)
 
 (define urdr.certificate.achieved-profile
-  [certificate _ _ Profile _ _ _ _ _ _ _ _ _] -> Profile)
+  [certificate _ _ Profile _ _ _ _ _ _ _ _ _ _] -> Profile)
 
 (define urdr.certificate.markers
-  [certificate _ _ _ _ _ _ _ Markers _ _ _ _] -> Markers)
+  [certificate _ _ _ _ _ _ _ Markers _ _ _ _ _] -> Markers)
+
+\\ The model bindings (ADR 0008): the sorted binding records of
+\\ section 5, exposed so a consumer can answer "which model produced
+\\ this evidence" without decoding the whole artifact.
+(define urdr.certificate.models
+  [certificate _ _ _ _ _ _ _ _ Models _ _ _ _] -> Models)
 
 \\ The vacuity summary is exposed separately from the certificate value
 \\ so a consumer can read "this property never fired" without decoding
 \\ the whole artifact, and without re-deriving it from a verdict list
 \\ that may be content-addressed.
 (define urdr.certificate.verdict-summary
-  [certificate _ _ _ _ _ _ _ _ _ _ Summary _] -> Summary)
+  [certificate _ _ _ _ _ _ _ _ _ _ _ Summary _] -> Summary)
 
 (define urdr.certificate.run
-  [certificate _ _ _ _ _ _ _ _ _ _ _ Run] -> Run)
+  [certificate _ _ _ _ _ _ _ _ _ _ _ _ Run] -> Run)
 
 (define urdr.certificate.log
   Cert -> (urdr.replay.run-log (urdr.certificate.run Cert)))
@@ -800,7 +888,7 @@
 
 (define urdr.certificate.value
   [certificate RunId Status Achieved Engine Profile ScenarioDigest
-    ManifestDigest Markers ReplayValue Slot Summary Run] ->
+    ManifestDigest Markers Models ReplayValue Slot Summary Run] ->
     [record
       [[(urdr.certificate.n k-achieved-profile) [symbol Achieved]]
        [(urdr.certificate.n k-artifact-manifest)
@@ -815,6 +903,7 @@
           (urdr.certificate.input-transcript-root))]
        [(urdr.certificate.n k-markers)
         [list (urdr.certificate.symbols Markers)]]
+       [(urdr.certificate.n k-models) [list Models]]
        [(urdr.certificate.n k-replay) ReplayValue]
        [(urdr.certificate.n k-requested-profile) [bytes Profile]]
        [(urdr.certificate.n k-run-id) [bytes RunId]]
@@ -827,7 +916,7 @@
        [(urdr.certificate.n k-verdict-summary) Summary]
        [(urdr.certificate.n k-verdicts) Slot]
        [(urdr.certificate.n k-version)
-        [symbol (urdr.certificate.n w-certificate-v1)]]]])
+        [symbol (urdr.certificate.n w-certificate-v2)]]]])
 
 (define urdr.certificate.input-root-value
   [ok Root] -> [bytes Root]

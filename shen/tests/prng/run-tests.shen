@@ -156,6 +156,30 @@
         (urdr.test.ok "integer-divide-zero"
           (urdr.int.divmod A (urdr.int.zero))
           [error divide-by-zero])
+        \* Edge vectors for the descending-weights host-natural divmod.
+           Both operands stay within the ADR 0003 reviewed host bound;
+           99,990,000 is the largest value any caller can produce
+           (limb * limb + carry). *\
+        (urdr.test.ok "small-divmod-zero-numerator"
+          (urdr.int.small.divmod 0 7) [0 0])
+        (urdr.test.ok "small-divmod-below-divisor"
+          (urdr.int.small.divmod 5 9) [0 5])
+        (urdr.test.ok "small-divmod-divisor-minus-one"
+          (urdr.int.small.divmod 9999 10000) [0 9999])
+        (urdr.test.ok "small-divmod-equal-operands"
+          (urdr.int.small.divmod 123 123) [1 0])
+        (urdr.test.ok "small-divmod-max-carry"
+          (urdr.int.small.divmod 99990000 10000) [9999 0])
+        (urdr.test.ok "small-divmod-max-by-one"
+          (urdr.int.small.divmod 99990000 1) [99990000 0])
+        (urdr.test.ok "small-divmod-max-by-9999"
+          (urdr.int.small.divmod 99990000 9999) [10000 0])
+        (urdr.test.ok "small-divmod-max-remainder"
+          (urdr.int.small.divmod 99989999 10000) [9998 9999])
+        (urdr.test.ok "small-divmod-adversarial-prime"
+          (urdr.int.small.divmod 12345678 4567) [2703 1077])
+        (urdr.test.ok "small-divmod-adversarial-seven"
+          (urdr.int.small.divmod 99990000 7) [14284285 5])
         (urdr.test.ok "time-compare"
           (urdr.time.compare A B) [ok 1])
         (urdr.test.ok "time-successor"

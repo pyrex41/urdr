@@ -1,9 +1,10 @@
 \\ Seeded generative grammar for scenario families (SPEC.md 17 / 18,
 \\ ADR 0004 Decision 5, M1 plan Wave H). Requires
 \\ shen/protocol/canonical.shen, shen/world/integer.shen,
-\\ shen/world/prng.shen, shen/world/world.shen (coordinates-value),
-\\ shen/world/eventlog.shen (path digests), and shen/search/search.shen
-\\ to be loaded by the caller.
+\\ shen/world/prng.shen, shen/world/component.shen (encoding order),
+\\ shen/world/world.shen (coordinates-value), shen/world/eventlog.shen
+\\ (path digests), and shen/search/search.shen to be loaded by the
+\\ caller.
 \\
 \\ Pure: no I/O, no host time, no host randomness, no floating point, no
 \\ defprolog. Every public operation returns [ok ...] or
@@ -530,11 +531,34 @@
        [(urdr.grammar.n k-schedule)
         [symbol (urdr.grammar.schedule-shape-octets Schedule)]]]])
 
-\\ Cartesian products in fixed nested order so alternatives are
-\\ deterministically ordered (outer list order is author order).
+\\ Cartesian products, emitted in strictly ascending canonical encoding
+\\ order (exact duplicates dropped), never in author enumeration order:
+\\ the world kernel rejects a scheduled choice whose alternatives are
+\\ unordered (choice-alternatives-order), so no host iteration order —
+\\ and no family-spec author order — can reach world semantics.
+\\ Encoding order is not alphabetical (canonical atoms are
+\\ length-prefixed: "5:crash" sorts before "9:partition").
+
+(define urdr.grammar.alt-insert
+  V [] -> [V]
+  V [W | Ws] ->
+    (let Order (urdr.canonical.bytes-compare
+                 (urdr.component.encoding V)
+                 (urdr.component.encoding W))
+      (if (= Order lt)
+          [V W | Ws]
+          (if (= Order eq)
+              [W | Ws]
+              [W | (urdr.grammar.alt-insert V Ws)]))))
+
+(define urdr.grammar.alt-sort
+  [] -> []
+  [V | Vs] -> (urdr.grammar.alt-insert V (urdr.grammar.alt-sort Vs)))
 
 (define urdr.grammar.topo-alts
-  Sizes Modes -> (urdr.grammar.topo-alts-sizes Sizes Modes []))
+  Sizes Modes ->
+    (urdr.grammar.alt-sort
+      (urdr.grammar.topo-alts-sizes Sizes Modes [])))
 
 (define urdr.grammar.topo-alts-sizes
   [] _ Acc -> (urdr.canonical.rev Acc)
@@ -549,7 +573,9 @@
       S Ms [(urdr.grammar.topo-alt S M) | Acc]))
 
 (define urdr.grammar.work-alts
-  Counts Shapes -> (urdr.grammar.work-alts-counts Counts Shapes []))
+  Counts Shapes ->
+    (urdr.grammar.alt-sort
+      (urdr.grammar.work-alts-counts Counts Shapes [])))
 
 (define urdr.grammar.work-alts-counts
   [] _ Acc -> (urdr.canonical.rev Acc)
@@ -565,7 +591,8 @@
 
 (define urdr.grammar.fault-alts
   Counts Kinds Schedules ->
-    (urdr.grammar.fault-alts-counts Counts Kinds Schedules []))
+    (urdr.grammar.alt-sort
+      (urdr.grammar.fault-alts-counts Counts Kinds Schedules [])))
 
 (define urdr.grammar.fault-alts-counts
   [] _ _ Acc -> (urdr.canonical.rev Acc)
@@ -597,16 +624,23 @@
     (if (= Key Want) Value (urdr.grammar.field Rest Want))
   [_ | Rest] Want -> (urdr.grammar.field Rest Want))
 
+\\ Convert a software integer (or already-small number) to a host
+\\ small natural for field decoding. Magnitude decoding is delegated
+\\ to urdr.int.small-of so the little-endian limb order of ADR 0003
+\\ is honoured in exactly one place; anything outside its host-safe
+\\ window clamps to 0, matching this module's treatment of every
+\\ other malformed field.
 (define urdr.grammar.small-of
   N -> N where (and (number? N) (>= N 0))
-  [big 1 Mag] -> (urdr.grammar.mag-small Mag 0)
+  [big 1 Mag] ->
+    (urdr.grammar.small-of-ok (urdr.int.small-of [big 1 Mag]))
   [big -1 _] -> 0
   [big 0 _] -> 0
   _ -> 0)
 
-(define urdr.grammar.mag-small
-  [] Acc -> Acc
-  [D | Ds] Acc -> (urdr.grammar.mag-small Ds (+ (* Acc 10000) D)))
+(define urdr.grammar.small-of-ok
+  [ok N] -> N
+  _ -> 0)
 
 (define urdr.grammar.symbol-bytes
   [symbol Bs] -> Bs
@@ -944,9 +978,12 @@
   _ _ [error Code Detail] -> [error Code Detail]
   _ _ _ -> [error (urdr.grammar.n c-menu) [null]])
 
-\\ Build the decision transcript: for each choice, schedule the menu
-\\ then advance. Order matches Wave F explore BUILD convention so
-\\ urdr.replay.run accepts the transcript on a fixture world.
+\\ Build the decision transcript: for each choice, schedule the pinned
+\\ decision (selected form, ADR 0007 D2 -- urdr.search.schedule-input
+\\ carries the selection and its coordinates, so replay consumes the
+\\ recorded decision instead of re-drawing) then advance. Order matches
+\\ the Wave F explore BUILD convention so urdr.replay.run accepts the
+\\ transcript on a fixture world.
 (define urdr.grammar.transcript-of
   Choices -> (urdr.grammar.transcript-h Choices []))
 

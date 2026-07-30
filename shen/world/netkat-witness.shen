@@ -197,7 +197,8 @@ pass and never dropped. *\
   Seed Name State ->
     (urdr.world.initial-with-components
       Seed
-      [[component Name (/. S E (urdr.model.net.step S E)) State]]))
+      [(urdr.component.entry
+         Name (/. S E (urdr.model.net.step S E)) State)]))
 
 (define urdr.netkat.witness.run
   Seed Name State Inputs ->

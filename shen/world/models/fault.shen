@@ -20,7 +20,8 @@ restart}:
   drop       latched, reachability fault. Emits a `mask` fact.
   partition  latched, reachability fault. Emits a `mask` fact.
   crash      latched, targets process components. Emits a `crash` fact
-             naming the member nodes; deactivating emits `restart`.
+             whose value is literally the process wrapper's crash input
+             (kind plus the member nodes); deactivating emits `restart`.
   restart    pulse, targets process components. Emits a `restart` fact and
              leaves the active set unchanged, so it can be pulsed again.
 
@@ -447,10 +448,17 @@ Choices: purpose `fault-action`, one alternative per legal
           Nodes
           Kind)))
 
+\\ A crash/restart fact's value is literally the process wrapper's
+\\ control input — the `kind` key is what urdr.model.fault.process
+\\ latches on — plus the member nodes, exactly as the `mask` fact's
+\\ value is literally the network model's mask input: the world kernel
+\\ routes it under a declared route (ADR 0007 D4) and nothing in between
+\\ can reinterpret it. Keys ascend kind < members.
 (define urdr.model.fault.members-value
-  Members ->
+  Kind Members ->
     [record
-      [[(urdr.model.fault.n.members)
+      [[(urdr.model.fault.n.kind) [symbol Kind]]
+       [(urdr.model.fault.n.members)
         [list (urdr.model.common.symbols Members)]]]])
 
 \\ crash latches; restart is a pulse and leaves the active set alone.
@@ -468,7 +476,7 @@ Choices: purpose `fault-action`, one alternative per legal
         (urdr.model.fault.replace
           [domain Id Kinds Members Next] Domains)
         Nodes
-        [[fact Name (urdr.model.fault.members-value Members)]
+        [[fact Name (urdr.model.fault.members-value Name Members)]
          [fact (urdr.model.fault.n.activated)
            (urdr.model.fault.alternative
              Id Kind (urdr.model.fault.n.activate))]])))
@@ -525,7 +533,8 @@ Choices: purpose `fault-action`, one alternative per legal
          Release
          (if (urdr.model.fault.process? Kind)
              [fact (urdr.model.fault.n.restart)
-               (urdr.model.fault.members-value Members)]
+               (urdr.model.fault.members-value
+                 (urdr.model.fault.n.restart) Members)]
              [fact (urdr.model.fault.n.unmask)
                (urdr.model.net.unmask-input
                  (urdr.model.fault.mask-id Id Kind))])
@@ -613,8 +622,13 @@ Choices: purpose `fault-action`, one alternative per legal
 \\
 \\ Crash and restart faults target process components, and a component
 \\ cannot address another component, so the world kernel routes the fault
-\\ model's `crash` / `restart` facts to the named process as ordinary
-\\ component inputs. This wrapper is what receives them. A crashed process
+\\ model's `crash` / `restart` facts to the target process as ordinary
+\\ component inputs — under a route the scenario declares (ADR 0007 D4:
+\\ [record [[fact crash] [from FAULT-ID] [to PROCESS-ID-or-node]]]),
+\\ matched and enqueued by urdr.world.component-commit at the current
+\\ logical time. The fact's value carries the `kind` key this wrapper
+\\ latches on, so the routed value is the wrapper's control input with
+\\ no translation. This wrapper is what receives them. A crashed process
 \\ does not silently swallow its inputs: each one produces a canonical
 \\ `crashed` fact and increments a visible absorbed count, so absorption
 \\ is evidence in the fact log rather than an absence of it.

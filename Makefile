@@ -3,7 +3,7 @@ PYTHON ?= python3
 #   make conformance REQUIRED_IMPLS=shen-cl
 REQUIRED_IMPLS ?= shen-go,shen-lua,shen-cl,shen-rust
 
-.PHONY: bootstrap fmt-check test conformance conformance-shake ci quality
+.PHONY: bootstrap fmt-check test adversarial conformance conformance-shake ci quality
 
 # This is the only entry point permitted to fetch network dependencies.
 bootstrap:
@@ -21,9 +21,21 @@ ports:
 fmt-check:
 	URDR_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1 $(PYTHON) scripts/repo-quality
 
+# Two offline discovery roots: the foundation unit tests and the
+# adversarial negative/mutation harness (pure Python + committed fixtures;
+# its optional Shen launcher probes live behind `make adversarial`).
 test:
 	URDR_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m unittest discover \
 		-s scripts/tests -p 'test_*.py'
+	URDR_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m unittest discover \
+		-s shen/tests/adversarial -p 'test_*.py'
+
+# The adversarial harness plus its read-only launcher probes. The probes
+# require all four pinned launchers (see scripts/build-ports), so this
+# target is not part of the offline `test` lane.
+adversarial:
+	URDR_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1 \
+		$(PYTHON) shen/tests/adversarial/run --probe-ports
 
 conformance:
 	URDR_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1 REQUIRED_IMPLS=$(REQUIRED_IMPLS) \

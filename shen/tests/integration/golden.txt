@@ -1,10 +1,14 @@
-DEMO|0|scenario|valid|eb91fed0928a5b858e444912bdb470cc489381bbf201de71ae021615cda27c2c
-DEMO|1|explore|found|cf1f3ecb98e5fa293405374cc7245deeb0deb19e772cd81f6aabff0842cecfd0|inject=true
-DEMO|2|shrink|before=14|after=1|persist=true
-DEMO|3|replay|ok|root=db65fba69941a791db933abd0adfa6ca3b657060377210e1cb2314ac7cce118d|fail=true
+DEMO|0|scenario|valid|0f54989c45ceb3cc352a3ddbed3f4b7ec2e1090daec2a52e02cc4d176c229f87
+DEMO|1|discover|attempt=2|sig=950d826bbc2bc6354edd1bb33224f20a04bf1d451affe875bdfcf8186d7091a4
+DEMO|1|verdict|client-ack|FAIL|no-witness
+DEMO|1|verdict|request-served|FAIL|record
+DEMO|2|shrink|before=28|after=5|persist=true
+DEMO|3|replay|verified|root=5a0848e557c3ec09e8eeea71562fe76b51dfa10bb60c512349088d51c3f271c5|reproduced=true
 DEMO|4|netkat|isolation=unreachable|witness=confirmed
 DEMO|5|netpol|isolation=IEIEIE----|marker=spec-semantics-only|unintended=0|witness=confirmed
-DEMO|6|certificate|status=PASS|markers=modeled-world-only,spec-semantics-only|abstract=true|entropy=28363a7265636f726428393a666f7262696464656e28333a696e74313a30292928373a6d6f64656c656428333a696e74313a31292928343a7075726528333a696e74313a31292928383a7265636f7264656428333a696e74313a3029292831323a756e636f6e74726f6c6c656428333a696e74313a30292929|runid=fa873f159d6f18dbc494555418ed3ead66495a302139f1bbdd82bfcc21f523ea
+DEMO|6|certificate|status=FAIL|profile=modeled-d1-analog|markers=modeled-world-only|abstract=true|runid=191537d7997701855af882f7bf670a2bd8979aacac964f0df373c6fd429e12c8
+DEMO|6|entropy|28363a7265636f726428393a666f7262696464656e28333a696e74313a30292928373a6d6f64656c656428333a696e74323a3139292928343a7075726528333a696e74313a39292928383a7265636f7264656428333a696e74313a3029292831323a756e636f6e74726f6c6c656428333a696e74313a30292929
+DEMO|6|models|client:pr-client@a,fault-0:pr-fault@a,net-0:pr-net@a,relay:pr-relay@b,server:pr-server@c
 DEMO|7|foreman|make-quality+four-port|deferred
 INTEGRATION CASES: 8
 ALL PASS

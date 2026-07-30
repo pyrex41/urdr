@@ -1,6 +1,7 @@
 \\ Seeded exploration: choice records, strategies, and the explore driver
 \\ (SPEC.md 17, M1 plan Wave F). Requires shen/protocol/canonical.shen,
-\\ shen/world/integer.shen, shen/world/prng.shen, shen/world/world.shen,
+\\ shen/world/integer.shen, shen/world/prng.shen,
+\\ shen/world/component.shen (encoding order), shen/world/world.shen,
 \\ shen/world/eventlog.shen, and shen/world/certificate.shen to be loaded
 \\ by the caller.
 \\
@@ -47,9 +48,12 @@
 \\
 \\   [menu Id At Kind Subsystem Actor Purpose Alternatives]
 \\
-\\ Alternatives are nonempty and must already be in canonical order (the
-\\ component contract). The strategy never reorders them for selection
-\\ identity; boundary bias only reweights a parallel index bag.
+\\ Alternatives are nonempty and strictly ascending in canonical
+\\ encoding order (the component contract, enforced here as
+\\ search-menu-order and again by the reducer as
+\\ choice-alternatives-order). The strategy never reorders them for
+\\ selection identity; boundary bias only reweights a parallel index
+\\ bag.
 \\
 \\ =====================================================================
 \\ 2. Strategies
@@ -157,6 +161,9 @@
   c-menu-empty ->
     [115 101 97 114 99 104 45 109 101 110 117 45 101 109 112 116
      121]
+  c-menu-order ->
+    [115 101 97 114 99 104 45 109 101 110 117 45 111 114 100 101
+     114]
   c-kind ->
     [115 101 97 114 99 104 45 107 105 110 100]
   c-strategy ->
@@ -220,6 +227,19 @@
          (urdr.search.canonical-list? Vs))
   _ -> false)
 
+\\ Strict ascension in canonical encoding order, the same comparison the
+\\ component and world-reducer doors enforce
+\\ (urdr.component.encoding-ascending?). Rejecting an unordered menu at
+\\ construction gives strategy authors the error where they built it,
+\\ not at reduce time. Callers must have proved the list canonically
+\\ encodable first: the comparison reads encodings.
+(define urdr.search.ascending?
+  [] -> true
+  [_] -> true
+  [A B | Rest] ->
+    (and (urdr.component.encoding-ascending? A B)
+         (urdr.search.ascending? [B | Rest])))
+
 (define urdr.search.nth
   0 [X | _] -> X
   N [_ | Xs] -> (urdr.search.nth (- N 1) Xs))
@@ -239,16 +259,21 @@
 
 \\ Convert a software integer (or already-small number) to a host small
 \\ natural for list indexing. Bounds in this module are scenario-scale.
+\\ Magnitude decoding is delegated to urdr.int.small-of so the
+\\ little-endian limb order of ADR 0003 is honoured in exactly one
+\\ place; anything outside its host-safe window clamps to 0, matching
+\\ this module's treatment of every other malformed index.
 (define urdr.search.small-of
   N -> N where (and (number? N) (>= N 0))
-  [big 1 Mag] -> (urdr.search.mag-small Mag 0)
+  [big 1 Mag] ->
+    (urdr.search.small-of-ok (urdr.int.small-of [big 1 Mag]))
   [big -1 _] -> 0
   [big 0 _] -> 0
   _ -> 0)
 
-(define urdr.search.mag-small
-  [] Acc -> Acc
-  [D | Ds] Acc -> (urdr.search.mag-small Ds (+ (* Acc 10000) D)))
+(define urdr.search.small-of-ok
+  [ok N] -> N
+  _ -> 0)
 
 \\ ---------------------------------------------------------------
 \\ Menu construction
@@ -262,6 +287,8 @@
             [error (urdr.search.n c-menu-empty) [null]]
             (if (not (urdr.search.canonical-list? Alternatives))
                 [error (urdr.search.n c-alts) [null]]
+                (if (not (urdr.search.ascending? Alternatives))
+                    [error (urdr.search.n c-menu-order) [null]]
                 (if (not (= (hd (urdr.prng.octets.check Subsystem)) ok))
                     [error (urdr.search.n c-menu-shape) [null]]
                     (if (not (= (hd (urdr.prng.octets.check Actor)) ok))
@@ -270,7 +297,7 @@
                                     ok))
                             [error (urdr.search.n c-menu-shape) [null]]
                             [ok [menu Id At Kind Subsystem Actor Purpose
-                                  Alternatives]])))))))
+                                  Alternatives]]))))))))
 
 (define urdr.search.menu-id
   [menu Id _ _ _ _ _ _] -> Id)
@@ -349,14 +376,20 @@
        [(urdr.search.n k-time) At]]]
   _ -> [null])
 
-\\ A reducer input that schedules the same choice menu the strategy just
-\\ decided among. Compatible with urdr.replay.write / urdr.replay.run:
-\\ the world will re-draw from its own streams on reduce; the search
-\\ record is the decision-level audit of what explore selected.
+\\ A reducer input that schedules the decision the strategy just made,
+\\ in the world's SELECTED choice form (ADR 0007 D2): menu, selected
+\\ alternative, and the PRNG coordinates of the strategy's draw. The
+\\ world applies the recorded selection without re-drawing, so explore's
+\\ transcripts are pinned by construction -- a transcript survives a
+\\ strategy change, and replaying it cannot perturb world streams. The
+\\ coordinates travel verbatim as evidence of the driver-space draw;
+\\ the search record remains the decision-level audit of the same fact.
 (define urdr.search.schedule-input
-  [choice-record _ At _ Alternatives _ _ _] Subsystem Actor Purpose ->
+  [choice-record _ At _ Alternatives Selected _ Coordinates]
+  Subsystem Actor Purpose ->
     [schedule At choice
-      [choice Subsystem Actor Purpose Alternatives]]
+      [choice Subsystem Actor Purpose Alternatives Selected
+        Coordinates]]
   _ _ _ _ -> [error (urdr.search.n c-record-shape) [null]])
 
 \\ ---------------------------------------------------------------

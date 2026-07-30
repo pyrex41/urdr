@@ -56,7 +56,7 @@
 \\ event ids are allocated at scheduling time and are not monotone in
 \\ processing order.
 \\
-\\ urdr.properties.trace-of-world lifts a world/v1 value to a trace by
+\\ urdr.properties.trace-of-world lifts a world/v2 value to a trace by
 \\ taking its fact log unchanged.
 \\
 \\ =====================================================================
@@ -703,11 +703,11 @@
   [error E] -> [error E]
   [ok _] -> [ok])
 
-\\ A world/v1 value's fact log is already a canonical trace. The shape is
+\\ A world/v2 value's fact log is already a canonical trace. The shape is
 \\ matched directly so this module needs no dependency on world.shen; a
-\\ future world/v2 fails closed here rather than being reinterpreted.
+\\ future world/v3 fails closed here rather than being reinterpreted.
 (define urdr.properties.trace-of-world
-  [world/v1 _ _ _ _ _ _ _ _ Facts] -> [ok [trace Facts]]
+  [world/v2 _ _ _ _ _ _ _ _ Facts _] -> [ok [trace Facts]]
   _ -> [error properties-world-shape])
 
 \\ ---------------------------------------------------------------------
