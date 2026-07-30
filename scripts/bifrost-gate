@@ -48,8 +48,8 @@ EXPECTED_PINS = {
     "bifrost": "b0e2baa067c5f6e2047f077d531200bfc02bfa0f",
     "ratatoskr": "56d67c7a603e28e25f3a8dc4774f08741e98f1ce",
     "shen-go": "e3517b06ea331bf889de841fff0d51aeb3db479e",
-    "shen-lua": "9f6fb35d8c955bf303a55ef354e50ea18123c0bb",
-    "shen-cl": "dc3b599c440a94cb717e01f8c7ef674c5ff5f988",
+    "shen-lua": "4e3b43a9eb2e3529f300c08c593abd8b00908ac2",
+    "shen-cl": "e48776dfc0da2928f0b9828b942d678648e408e0",
     "shen-rust": "0f5408acf50715d7d76093dbc8705b0dc986c9a9",
     "shenscript": "35b8269f75afbac9939ac0e8c7838cc4bf00d448",
 }
