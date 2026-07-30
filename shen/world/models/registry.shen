@@ -431,3 +431,25 @@ already guarantees for its roster. *\
   [ok Registry] Seed Scenario ->
     (urdr.world.initial-with-routes
       Seed Registry (urdr.scenario.routes-of Scenario)))
+
+\\ Driver boot (ADR 0007 D1 + D5): the same path as world-from-scenario
+\\ with the routing cascade limit supplied by the caller — urdr.run
+\\ passes the scenario budget's max-steps, making D4's "cascades are
+\\ bounded by max-steps" literal. A separate constructor rather than a
+\\ changed default, so the existing constructor's 64-limit behavior —
+\\ and every golden pinned against it — is untouched.
+(define urdr.model.registry.world-from-scenario-limited
+  Seed Scenario BaselineValue KindTable ModelTable Limit ->
+    (urdr.model.registry.world-of-limited
+      (urdr.model.registry.from-scenario
+        Scenario BaselineValue KindTable ModelTable)
+      Seed
+      Scenario
+      Limit))
+
+(define urdr.model.registry.world-of-limited
+  [error E] Seed Scenario Limit -> [error E]
+  [error E Detail] Seed Scenario Limit -> [error E Detail]
+  [ok Registry] Seed Scenario Limit ->
+    (urdr.world.initial-with-routes-limit
+      Seed Registry (urdr.scenario.routes-of Scenario) Limit))

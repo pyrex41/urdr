@@ -102,6 +102,45 @@
             (urdr.world.route-depth-default)
             (urdr.int.zero)]]])
 
+\\ Driver-bound routed boot (ADR 0007 D5): identical to
+\\ initial-with-routes except that the route-cascade limit is the
+\\ caller's — the run driver binds it to the scenario budget's
+\\ max-steps, so a declared budget governs cascade depth instead of
+\\ the fixed default. The 64 default stays on the constructors above:
+\\ their callers declared no budget to bind. The limit is checked here
+\\ (valid, non-negative software integer) because this is a
+\\ constructor door: an invalid limit must fail closed before a world
+\\ exists, not at the first routed commit.
+(define urdr.world.initial-with-routes-limit
+  Seed Registry Routes Limit ->
+    (if (not (and (urdr.int.valid? Limit)
+                  (not (urdr.int.raw.negative? Limit))))
+        [error (urdr.component.code "route-limit-shape") [null]]
+        (let Valid (urdr.component.registry-valid? Registry)
+          (if (= (hd Valid) error)
+              Valid
+              (urdr.world.initial-routed-limit
+                (urdr.world.routes-check Routes Registry)
+                Seed
+                Registry
+                Routes
+                Limit)))))
+
+(define urdr.world.initial-routed-limit
+  [error Code Detail] Seed Registry Routes Limit -> [error Code Detail]
+  [ok] Seed Registry Routes Limit ->
+    [ok [world/v2
+          (urdr.int.zero)
+          (urdr.int.zero)
+          []
+          Seed
+          []
+          []
+          []
+          Registry
+          []
+          [routing Routes Limit (urdr.int.zero)]]])
+
 (define urdr.world.route-registered?
   Name Registry ->
     (not (= (urdr.world.component-find Name Registry) none)))
