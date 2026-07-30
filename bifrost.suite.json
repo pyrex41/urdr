@@ -169,7 +169,7 @@
       "fixture_manifest": null,
       "fixture_manifest_sha256": null,
       "raw_golden_path": "shen/tests/integration/golden.txt",
-      "raw_golden_sha256": "e73c5a5281e73a60480a74a6d969fc7efd82ff8dcc7eccf032412f73134b2d66",
+      "raw_golden_sha256": "87d4166bf8bc48162ade9030057f7c12cad9538915daa941113fce1c77510377",
       "doc": "M1 abstract-world exit demonstration (partition-retry)"
     }
   ]
