@@ -4,7 +4,7 @@ SEED|b|true|d84be5344c28814ffc8ffe368169584459c2ffd253681dc327b956f8d88de9ee
 SEED|b-path|true|43e6e9166e6401776f65e9a53a2f12e3d0bdb41bdc9d41896e5092778b55bf16
 MUT|seeds|true
 SEED|fragment|true|f190a30e269f7b3cabdbd3a23c8771a6d2f25d3fb9992810dceb308118233701
-REPLAY|full|ok|9bf68bd904348ce08e4588a6a81c30a655258bddb2bc36f822512108bf5006f7
+REPLAY|full|ok|7a4d485f928ae4f6a56c6d13026494ed8f9bf0d2d330087be9fd2fe6f9bac4da
 REPLAY|withhold|replay-transcript-truncated
 MUT|empty-sizes|rejected
 MUT|bad-mode|rejected

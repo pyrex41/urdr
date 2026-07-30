@@ -112,8 +112,9 @@
 
 \\ ---------------------------------------------------------------
 \\ Fixture world for transcript replay (minimal counter component).
-\\ Grammar schedule-input entries are ordinary choice menus; the
-\\ reducer accepts them and the counter ignores payloads.
+\\ Grammar schedule-input entries are pinned selected-form choices
+\\ (ADR 0007 D2): the reducer applies each recorded selection without
+\\ drawing, and the counter ignores payloads.
 \\ ---------------------------------------------------------------
 
 (define ug.comp-name -> (ug.k "proc"))

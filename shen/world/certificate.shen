@@ -611,12 +611,21 @@
 \\ Status (section 3)
 \\ ---------------------------------------------------------------
 
-\\ Only the three engine-level disagreements are DIVERGED. A transcript
+\\ Only the four engine-level disagreements are DIVERGED. A transcript
 \\ that is not the recorded one is evidence about the artifact.
+\\ replay-selection-divergence joins the family with ADR 0007 D2's
+\\ pinned selections: it only arises after the candidate transcript
+\\ matched the recorded entry digests, when the engine's membership
+\\ door refuses a selection that same artifact records as decided --
+\\ the engine and the artifact disagreeing about the run, exactly what
+\\ DIVERGED names. (Codes for transcripts that fail to match at all --
+\\ truncated/extended/reordered/tampered -- stay outside: they say the
+\\ artifact is not the recorded one, nothing about the engine.)
 (define urdr.certificate.divergence?
   replay-event-divergence -> true
   replay-state-divergence -> true
   replay-event-count -> true
+  replay-selection-divergence -> true
   _ -> false)
 
 (define urdr.certificate.status-of

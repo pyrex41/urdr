@@ -8,11 +8,13 @@ STRAT|boundary-delay|d1|boundary
 EXPLORE|baseline|found|eab480e5de09c779149e10a8b6c874f41a506f3292a812f6783f6ab9674762de
 EXPLORE|boundary|found|2d4f42633825885b4d71bb6c1cf61910b4fdf415d83bd8096dcdf34fe4fcc4d8
 SHRINK|minimize|14|1|true
+SHRINK|pinned|14|1|true
 MUT|drop-fault|rejected
 REPLAY|minimized|true|db65fba69941a791db933abd0adfa6ca3b657060377210e1cb2314ac7cce118d
+REPLAY|explore|true|0e352a3cf39b25332f20e9a846533d9cc35ce9284351d3df4820c3b5c6a96398
 REPLAY|original|true|ddcd78aa3678af8dcdbad2be09a77402b590cf197996eb93e418ea3a3623e376
 SEED|baseline|true|eab480e5de09c779149e10a8b6c874f41a506f3292a812f6783f6ab9674762de
 SEED|boundary|true|2d4f42633825885b4d71bb6c1cf61910b4fdf415d83bd8096dcdf34fe4fcc4d8
 CHOICE|small-of|true
-EXPLORE-SHRINK CASES: 14
+EXPLORE-SHRINK CASES: 16
 ALL PASS

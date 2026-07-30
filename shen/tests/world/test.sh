@@ -37,7 +37,7 @@ run_port() {
 
   if "$@" >"$output" &&
      /usr/bin/grep -E \
-       '^(WORLD-TRACE |WORLD-COMPONENT-TRACE |WORLD TESTS: |ALL PASS$)' \
+       '^(WORLD-CHOICE-DRAWN |WORLD-CHOICE-SELECTED |WORLD-TRACE |WORLD-COMPONENT-TRACE |WORLD TESTS: |ALL PASS$)' \
        "$output" >"$semantic" &&
      /usr/bin/cmp -s "$GOLDEN" "$semantic"; then
     printf '%s: PASS exact-golden\n' "$name"
