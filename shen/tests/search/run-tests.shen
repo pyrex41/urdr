@@ -139,8 +139,11 @@
 \\ ---------------------------------------------------------------
 \\ Alternatives and menus
 \\
-\\ Alternatives are canonically ordered records with a bias `tag` and a
-\\ `value`. Alphabetical tag/value order is fixed by construction.
+\\ Alternatives are records with a bias `tag` and a `value`, listed in
+\\ strictly ascending canonical encoding order — the order the reducer
+\\ (and now urdr.search.menu) enforces. Canonical atoms are
+\\ length-prefixed, so this is NOT alphabetical order: "3:red" encodes
+\\ before "4:blue".
 \\ ---------------------------------------------------------------
 
 (define ues.alt
@@ -155,7 +158,7 @@
   -> [(ues.alt "fault" "inject") (ues.alt "other" "noop")])
 
 (define ues.color-alts
-  -> [(ues.alt "other" "blue") (ues.alt "other" "red")])
+  -> [(ues.alt "other" "red") (ues.alt "other" "blue")])
 
 (define ues.delay-alts
   -> [(ues.alt "timing" "d0") (ues.alt "timing" "d1")])

@@ -154,8 +154,10 @@ recorded so the foreman can pin them. *\
 (define uit.fault-alts
   -> [(uit.alt "fault" "inject") (uit.alt "other" "noop")])
 
+\\ Strictly ascending canonical encoding order, not alphabetical:
+\\ atoms are length-prefixed, so "3:red" encodes before "4:blue".
 (define uit.color-alts
-  -> [(uit.alt "other" "blue") (uit.alt "other" "red")])
+  -> [(uit.alt "other" "red") (uit.alt "other" "blue")])
 
 (define uit.retry-alts
   -> [(uit.alt "retry" "r0") (uit.alt "retry" "r1")])

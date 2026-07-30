@@ -184,13 +184,24 @@
       Alternative
       Previous))
 
+\\ Strict ascension in canonical encoding order, shared by the component
+\\ door (check-alternative-order below) and the world kernel's
+\\ scheduled-choice door (urdr.world.schedule): the one comparison both
+\\ enforce so no host iteration order can reach world semantics. Both
+\\ values must already be known canonically encodable — the comparison
+\\ reads their encodings. Strict ascension also rejects duplicates:
+\\ equal values encode identically and compare eq, never lt.
+(define urdr.component.encoding-ascending?
+  Previous Current ->
+    (= (urdr.canonical.bytes-compare
+         (urdr.component.encoding Previous)
+         (urdr.component.encoding Current))
+       lt))
+
 (define urdr.component.check-alternative-order
   [ok] _ none -> [ok]
   [ok] Alternative Previous ->
-    (if (= (urdr.canonical.bytes-compare
-             (urdr.component.encoding Previous)
-             (urdr.component.encoding Alternative))
-           lt)
+    (if (urdr.component.encoding-ascending? Previous Alternative)
         [ok]
         [error (urdr.component.code "component-alternative-order")
                [null]])

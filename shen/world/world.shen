@@ -115,6 +115,32 @@
              Seed Subsystem Actor Purpose (urdr.int.zero)))
        ok))
 
+\\ Scheduled choice alternatives must be strictly ascending in canonical
+\\ encoding order — the same comparison the component door enforces
+\\ (urdr.component.encoding-ascending?) — because selection is by
+\\ positional index: without this, two permutations of one alternative
+\\ set would be two different worlds under one seed, and a host's
+\\ iteration order could reach world semantics. Strict ascension already
+\\ rejects duplicates (equal values compare eq, never lt), so no
+\\ separate duplicate check is needed. Callers must first prove every
+\\ alternative canonically encodable (urdr.world.canonical-list-valid?):
+\\ the comparison reads encodings.
+(define urdr.world.alternatives-ascending?
+  [] -> true
+  [_] -> true
+  [A B | Rest] ->
+    (and (urdr.component.encoding-ascending? A B)
+         (urdr.world.alternatives-ascending? [B | Rest])))
+
+\\ Ordering is checked after event-valid? has proved encodability, in
+\\ the same reject-before-any-state-change phase, but under its own
+\\ stable code so an unordered menu is distinguishable from a
+\\ malformed one.
+(define urdr.world.event-order-valid?
+  choice [choice _ _ _ Alternatives] ->
+    (urdr.world.alternatives-ascending? Alternatives)
+  _ _ -> true)
+
 (define urdr.world.event-valid?
   Seed command Payload ->
     (urdr.world.canonical-valid? Payload)
@@ -203,6 +229,14 @@
                         Transcript Verdicts Components Facts]
                       [105 110 118 97 108 105 100 45 101 118 101 110 116]
                       [null])
+                (if (not (urdr.world.event-order-valid? Kind Payload))
+                    (urdr.world.error
+                      [world/v1
+                        Time NextId Pending Seed Streams
+                        Transcript Verdicts Components Facts]
+                      [99 104 111 105 99 101 45 97 108 116 101 114 110
+                       97 116 105 118 101 115 45 111 114 100 101 114]
+                      [null])
                     (let Event [event NextId At Kind Payload]
                          Next (hd (tl
                                 (urdr.time.successor NextId)))
@@ -219,7 +253,7 @@
                           Components
                           Facts]
                         []
-                        []])))))))
+                        []]))))))))
 
 (define urdr.world.advance
   [world/v1
