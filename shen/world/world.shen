@@ -1017,22 +1017,85 @@
                    115 116 97 116 101]]
           [bytes (hd (tl (urdr.sha256 (hd (tl Encoded)))))])))
 
+\\ The snapshot binds each entry's META whole (ADR 0008): the snapshot
+\\ commits to WHICH model ran the component, not merely to the state it
+\\ reached — two registries whose entries differ only in a model
+\\ binding are two different worlds, and before this binding their
+\\ snapshots were byte-identical. META is embedded verbatim rather
+\\ than digested: it is a two-field record validated at registration,
+\\ so a digest would cost more octets than the value while hiding the
+\\ binding from a snapshot diff (the routing slot's reasoning below).
+\\ Keys ascend meta < name < state-digest.
 (define urdr.world.component-value
-  Name State ->
+  Name State Meta ->
     [record
-      [[[110 97 109 101] [bytes Name]]
+      [[[109 101 116 97] Meta]
+       [[110 97 109 101] [bytes Name]]
        [[115 116 97 116 101 45 100 105 103 101 115 116]
         (urdr.world.state-digest-value State)]]])
 
-\\ The snapshot binds name and state digest only. Binding the entry's
-\\ META (model and node identity) into snapshots and certificates is
-\\ deliberately deferred to the ADR 0008 wave, so the snapshot shape is
-\\ unchanged this wave even though META exists at runtime.
 (define urdr.world.component-values
   [] -> []
-  [[component Name _ State _] | Rest] ->
-    [(urdr.world.component-value Name State) |
+  [[component Name _ State Meta] | Rest] ->
+    [(urdr.world.component-value Name State Meta) |
      (urdr.world.component-values Rest)])
+
+\\ The facts root (ADR 0008): a tagged SHA-256 over the ordered
+\\ per-fact digests, root(TAG, [D0 ... Dn]) = SHA-256(TAG ++ D0 ++ ...
+\\ ++ Dn) — the same fixed-width-digest discipline as the event-log
+\\ roots (eventlog.shen section 4), under this slot's own domain tag so
+\\ a facts root can never equal an event or transcript root over the
+\\ same digests. Every Di is exactly 32 octets, so the root is
+\\ sensitive to order, insertion, truncation, and content. This
+\\ replaces the old fact-COUNT binding: two runs whose components emit
+\\ different facts from identical states must have different snapshot
+\\ digests, and the count concealed the primary observable output of a
+\\ run (SPEC.md 4.1 — facts are what properties evaluate). The count is
+\\ deliberately NOT kept beside the root: no consumer reads it, the
+\\ root already distinguishes every length, and a second binding would
+\\ be a second, unvalidated copy of the same commitment.
+\\
+\\ Each fact is digested under the m1-large profile — the profile the
+\\ component door proved the embedded event value canonical under
+\\ (urdr.component.canonical?) and the one the state digests above
+\\ already use — so a fact that was legal to emit is always digestible
+\\ here; the default m0 profile could refuse a large-but-legal fact.
+\\ A fact that still fails to encode yields the fail-closed marker
+\\ [symbol invalid-facts] in place of a root, mirroring invalid-state
+\\ above: never a skipped fact and never a partial root.
+(define urdr.world.facts-root-tag
+  -> [117 114 100 114 45 102 97 99 116 115 45 114 111 111 116
+      45 118 49])
+
+\\ Digests accumulate reversed; the concat walks the reversed list and
+\\ prepends, so the octet stream comes out in fact order without a
+\\ second reversal pass.
+(define urdr.world.concat-rev
+  [] Acc -> Acc
+  [Octets | Rest] Acc ->
+    (urdr.world.concat-rev Rest (append Octets Acc)))
+
+(define urdr.world.facts-root-value
+  Facts -> (urdr.world.facts-root-loop Facts []))
+
+(define urdr.world.facts-root-loop
+  [] Acc ->
+    [bytes (hd (tl (urdr.sha256
+                     (append (urdr.world.facts-root-tag)
+                             (urdr.world.concat-rev Acc [])))))]
+  [Fact | Rest] Acc ->
+    (urdr.world.facts-root-step
+      (urdr.canonical.encode-payload-with-profile
+        (urdr.canonical.profile.m1-large) Fact)
+      Rest Acc)
+  _ _ -> [symbol [105 110 118 97 108 105 100 45 102 97 99 116 115]])
+
+(define urdr.world.facts-root-step
+  [error _] _ _ ->
+    [symbol [105 110 118 97 108 105 100 45 102 97 99 116 115]]
+  [ok Encoded] Rest Acc ->
+    (urdr.world.facts-root-loop
+      Rest [(hd (tl (urdr.sha256 Encoded))) | Acc]))
 
 (define urdr.world.route-target-value
   [component Id] -> [symbol Id]
@@ -1074,8 +1137,8 @@
     [record
       [[[99 111 109 112 111 110 101 110 116 115]
         [list (urdr.world.component-values Components)]]
-       [[102 97 99 116 45 99 111 117 110 116]
-        (urdr.world.list-count Facts)]
+       [[102 97 99 116 115 45 114 111 111 116]
+        (urdr.world.facts-root-value Facts)]
        [[110 101 120 116 45 101 118 101 110 116 45 105 100] NextId]
        [[112 101 110 100 105 110 103 45 101 118 101 110 116 45
          105 100 115]

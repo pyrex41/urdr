@@ -201,6 +201,23 @@
        (urdr.world.initial-with-components
          (urt.k "b-seed") (urt.a-registry))))
 
+\\ A world that differs from urt.a-world ONLY in one registry entry's
+\\ META model binding (ADR 0008): same seed, same handler, same state.
+\\ The snapshot binds META since ADR 0008, so this world's initial
+\\ snapshot digest — and therefore, transitively through preimage
+\\ field 3, its run id — must differ from urt.a-world's without any
+\\ new run-id preimage field.
+(define urt.a-registry-modeled
+  -> [[component (urt.a-name)
+        (/. S E (urt.counter S E))
+        (urt.counter-state (urdr.int.zero))
+        (urdr.component.meta (urt.k "m-alt") none)]])
+
+(define urt.a-world-modeled
+  -> (urt.world-of
+       (urdr.world.initial-with-components
+         (urt.k "a-seed") (urt.a-registry-modeled))))
+
 (define urt.bump
   N -> [record [[(urt.k "kind") (urt.big N)]]])
 
@@ -1108,7 +1125,15 @@
      (urt.mut-case "requested-profile" Base
        (urdr.certificate.run-id-of
          (urt.engine) (urt.scenario-value) (urt.manifest)
-         (urt.a-world) ARoot (urt.k "modeled-strict")))])
+         (urt.a-world) ARoot (urt.k "modeled-strict")))
+     \\ ADR 0008 D3: a model binding is not a preimage field, yet it
+     \\ must move the run id — transitively, because the initial
+     \\ snapshot (field 3) binds every entry's META. This is the
+     \\ executable form of the no-new-preimage-field argument.
+     (urt.mut-case "model-binding" Base
+       (urdr.certificate.run-id-of
+         (urt.engine) (urt.scenario-value) (urt.manifest)
+         (urt.a-world-modeled) ARoot (urt.profile)))])
 
 \\ ---------------------------------------------------------------
 \\ Case group 8: marker derivation and certificates.
@@ -1192,6 +1217,39 @@
 (define urt.bad-verdict
   -> [record [[(urt.k "property") (urt.s "x")]]])
 
+\\ ADR 0008 D2: the certificate's `models` field is the sorted binding
+\\ list of the INITIAL world's registry. Checked against the expected
+\\ value (accessor and canonical field both), then pinned canonically
+\\ in the golden — not merely printed. The empty transcript keeps the
+\\ three drives this build performs cheap: the field comes from the
+\\ initial registry, not from the run.
+(define urt.expected-models
+  -> [list [[record
+              [[(urt.k "component") [symbol (urt.a-name)]]
+               [(urt.k "model") [symbol (urt.k "m-alt")]]
+               [(urt.k "node") [null]]]]]])
+
+(define urt.models-case
+  -> (/. Unit
+       (urt.models-h
+         (urdr.certificate.build
+           (urdr.certificate.spec
+             (urt.engine) (urt.scenario-value) (urt.manifest)
+             (urt.profile) (urt.a-world-modeled) [] [] [])))))
+
+(define urt.models-h
+  [ok Cert] ->
+    (if (and (= [list (urdr.certificate.models Cert)]
+                (urt.expected-models))
+             (= (urdr.certificate.field-of
+                  (urt.k "models") (urdr.certificate.value Cert))
+                [some (urt.expected-models)]))
+        (do
+          (output "CERT|models|~A~%" (urt.enc-hex (urt.expected-models)))
+          true)
+        (urt.fail "models" "field-mismatch"))
+  _ -> (urt.fail "models" "certificate-error"))
+
 (define urt.cert-cases
   Policy ->
     [(urt.cert-case "minimal" [] [(urt.open-baseline)]
@@ -1210,7 +1268,8 @@
          (urt.profile) (urt.a-world) (urt.a-transcript) [] [])
        certificate-engine-version)
      (urt.cert-reject "reject-spec-shape" [not-a-spec]
-       certificate-spec-shape)])
+       certificate-spec-shape)
+     (urt.models-case)])
 
 \\ ---------------------------------------------------------------
 \\ Case group 9: 100 consecutive replays (plan Wave E acceptance).

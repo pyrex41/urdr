@@ -775,6 +775,69 @@
                          [null]])
                (uwt.meta-rejected?))))
 
+\\ The review's exact collision scenario (ADR 0008 D1, consensus
+\\ finding #4): two runs whose components emit DIFFERENT facts from
+\\ IDENTICAL states. Under the old fact-count binding the two snapshots
+\\ were byte-identical (same count, same states); the facts root must
+\\ separate them, while the component states still compare equal — the
+\\ divergence is in the observable output alone.
+(define uwt.probe-name
+  -> [112 114 111 98 101])
+
+(define uwt.fact-probe
+  Value State _ ->
+    [step State [[fact [111 117 116] Value]] []])
+
+(define uwt.probe-world
+  Value ->
+    (hd (tl (urdr.world.initial-with-components
+              (uwt.seed)
+              [(urdr.component.entry
+                 (uwt.probe-name)
+                 (/. S E (uwt.fact-probe Value S E))
+                 (uwt.zero-state))]))))
+
+(define uwt.probe-final
+  Value ->
+    (urdr.world.replay-world
+      (urdr.world.replay
+        (uwt.probe-world Value)
+        (uwt.component-inputs (uwt.probe-name) 1))))
+
+(define uwt.facts-divergence?
+  -> (let A (uwt.probe-final [symbol [97 45 102 97 99 116]])
+          B (uwt.probe-final [symbol [98 45 102 97 99 116]])
+       (and (= (uwt.component-state-of (uwt.probe-name) A)
+               (uwt.component-state-of (uwt.probe-name) B))
+            (not (= (urdr.world.snapshot-frame A)
+                    (urdr.world.snapshot-frame B))))))
+
+\\ Model identity in the snapshot (ADR 0008 D2): the components binding
+\\ carries each entry's META verbatim — {meta {model, node}, name,
+\\ state-digest}, keys ascending — so the snapshot commits to WHICH
+\\ model ran the component, not merely to the state it reached.
+(define uwt.snapshot-components
+  [record
+    [[[99 111 109 112 111 110 101 110 116 115] [list Values]] | _]] ->
+    Values
+  _ -> none)
+
+(define uwt.meta-visible?
+  -> (let Meta (urdr.component.meta [109 45 120] [110 45 49])
+          World (hd (tl (urdr.world.initial-with-components
+                          (uwt.seed)
+                          [[component (uwt.counter-name)
+                             (/. S E (uwt.counter S E))
+                             (uwt.zero-state)
+                             Meta]])))
+       (= (uwt.snapshot-components
+            (urdr.world.snapshot-value World))
+          [[record
+             [[[109 101 116 97] Meta]
+              [[110 97 109 101] [bytes (uwt.counter-name)]]
+              [[115 116 97 116 101 45 100 105 103 101 115 116]
+               (urdr.world.state-digest-value (uwt.zero-state))]]]])))
+
 (define uwt.component-trace-value
   Fixture ->
     (let Reductions (uwt.creductions Fixture)
@@ -811,7 +874,7 @@
           (do
             (output "WORLD-TRACE ~A~%" Hex)
             (output "WORLD-COMPONENT-TRACE ~A~%" ComponentHex)
-            (output "WORLD TESTS: 24/24 PASS~%")
+            (output "WORLD TESTS: 26/26 PASS~%")
             (output "ALL PASS~%")
             true))
         (do
@@ -851,7 +914,9 @@
           (uwt.component-own-error?)
           (uwt.component-unknown?)
           (uwt.component-input-rejected?)
-          (uwt.registry-rejected?)]
+          (uwt.registry-rejected?)
+          (uwt.facts-divergence?)
+          (uwt.meta-visible?)]
          \\ The trace projection is encoded under the m1-large profile:
          \\ the world/v2 snapshot binds the routing slot (ADR 0007 D4),
          \\ which pushed the combined trace record past the m0 256-node
