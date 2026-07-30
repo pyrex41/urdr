@@ -8,9 +8,12 @@
 \\ increasing unsigned ASCII order:
 \\
 \\   budget header-vocabulary components determinism faults
-\\   observations properties seed topology version
+\\   observations properties [routes] seed topology version
 \\
-\\ (spelled in sorted order below). The M1 subset deliberately omits the
+\\ where `routes` is optional (ADR 0007 D4): like the roster's optional
+\\ `model` key, its presence selects the expected key list, so an absent
+\\ field is legal while an unknown or misplaced key keeps its exact-match
+\\ rejection. The M1 subset deliberately omits the
 \\ SPEC.md 18 declarations that require real guests or external systems:
 \\ artifact and guest-image manifests, cluster manifests and OCI
 \\ workloads, external transcripts, and artifact-retention policy. A
@@ -72,6 +75,9 @@
 
 (define urdr.scenario.n.dst
   -> [100 115 116])
+
+(define urdr.scenario.n.fact
+  -> [102 97 99 116])
 
 (define urdr.scenario.n.fault
   -> [102 97 117 108 116])
@@ -149,6 +155,9 @@
 (define urdr.scenario.n.restart
   -> [114 101 115 116 97 114 116])
 
+(define urdr.scenario.n.routes
+  -> [114 111 117 116 101 115])
+
 (define urdr.scenario.n.scenario.v1
   -> [115 99 101 110 97 114 105 111 47 118 49])
 
@@ -196,6 +205,23 @@
       (urdr.scenario.n.topology)
       (urdr.scenario.n.version)])
 
+\\ The `routes` field is optional (ADR 0007 D4): presence selects the
+\\ expected key list, exactly the mechanics the roster's optional
+\\ `model` key uses. Keys still ascend: properties < routes < seed in
+\\ ASCII order.
+(define urdr.scenario.scenario-keys-with-routes
+  -> [(urdr.scenario.n.budget)
+      (urdr.scenario.n.components)
+      (urdr.scenario.n.determinism)
+      (urdr.scenario.n.faults)
+      (urdr.scenario.n.header-vocabulary)
+      (urdr.scenario.n.observations)
+      (urdr.scenario.n.properties)
+      (urdr.scenario.n.routes)
+      (urdr.scenario.n.seed)
+      (urdr.scenario.n.topology)
+      (urdr.scenario.n.version)])
+
 (define urdr.scenario.budget-keys
   -> [(urdr.scenario.n.max-events)
       (urdr.scenario.n.max-runs)
@@ -230,6 +256,12 @@
   -> [(urdr.scenario.n.id)
       (urdr.scenario.n.kinds)
       (urdr.scenario.n.members)])
+
+\\ Route records ascend fact < from < to in ASCII order (ADR 0007 D4).
+(define urdr.scenario.route-keys
+  -> [(urdr.scenario.n.fact)
+      (urdr.scenario.n.from)
+      (urdr.scenario.n.to)])
 
 (define urdr.scenario.header-keys
   -> [(urdr.scenario.n.field) (urdr.scenario.n.values)])
@@ -269,6 +301,33 @@
 \\ Header fields the M1 NetKAT fragment needs to express reachability.
 (define urdr.scenario.required-header-fields
   -> [(urdr.scenario.n.dst) (urdr.scenario.n.src)])
+
+\\ The nine reserved-authority names of the component contract
+\\ (urdr.component.reserved in shen/world/component.shen): a route may
+\\ not name one as its fact, because the routed fact's value becomes an
+\\ ordinary component input and a reserved fact name would let a
+\\ declaration launder a kernel authority through the router. The octet
+\\ lists are duplicated here rather than imported: this module's
+\\ dependency set is canonical.shen and integer.shen only, and pulling in
+\\ the world-side component contract to read one list would invert the
+\\ layering (the scenario DSL feeds the world; it does not depend on it).
+\\ component.shen carries the mirror cross-reference; a change to either
+\\ list without the other is a cross-suite conformance failure, because
+\\ both the scenario fixtures and the component-door fixtures pin the
+\\ nine names.
+(define urdr.scenario.reserved-authorities
+  -> [[99 104 111 105 99 101]
+      [99 104 111 105 99 101 45 105 100]
+      [99 111 109 109 97 110 100]
+      [99 111 111 114 100 105 110 97 116 101 115]
+      [101 118 101 110 116]
+      [101 118 101 110 116 45 105 100]
+      [115 101 101 100]
+      [115 101 108 102]
+      [116 105 109 101]])
+
+(define urdr.scenario.reserved-authority?
+  Bs -> (urdr.scenario.member? Bs (urdr.scenario.reserved-authorities)))
 
 \\ ---------------------------------------------------------------------
 \\ Generic helpers.
@@ -1005,6 +1064,106 @@
                 Items Nodes Member [Member | Acc])))))
 
 \\ ---------------------------------------------------------------------
+\\ routes: declared fact routing (ADR 0007 D4).
+\\
+\\ A route is [record [[fact SYMBOL] [from SYMBOL] [to TARGET]]] where
+\\ TARGET is a component-id symbol or [record [[node SYMBOL]]]. `from`
+\\ must be a declared roster component id; a symbol target must be a
+\\ declared component id; a node target must be a declared topology
+\\ node; the fact name may not be a reserved authority. Declaration
+\\ order is semantic — the kernel matches routes in this order — so no
+\\ ordering or duplicate constraint is imposed here: a repeated route is
+\\ a repeated delivery, declared as such.
+\\ ---------------------------------------------------------------------
+
+(define urdr.scenario.component-ids
+  [] -> []
+  [[component Id _ _ _] | Rest] ->
+    [Id | (urdr.scenario.component-ids Rest)])
+
+\\ Absent routes stay `none` so rendering can omit the field
+\\ (losslessness). A malformed roster keeps its own error: routes cannot
+\\ be checked against ids that never validated, and the assemble chain
+\\ reports the components error first.
+(define urdr.scenario.routes
+  none Components NodeIds -> [ok none]
+  [some Value] [error E] NodeIds -> [ok none]
+  [some Value] [ok Components] NodeIds ->
+    (urdr.scenario.routes-items
+      (urdr.scenario.items Value scenario-routes-type)
+      (urdr.scenario.component-ids Components)
+      NodeIds))
+
+(define urdr.scenario.routes-items
+  [error E] Ids NodeIds -> [error E]
+  [ok Items] Ids NodeIds ->
+    (urdr.scenario.routes-loop Items Ids NodeIds []))
+
+(define urdr.scenario.routes-loop
+  [] Ids NodeIds Acc -> [ok [routes (urdr.scenario.rev Acc)]]
+  [Item | Items] Ids NodeIds Acc ->
+    (urdr.scenario.routes-step
+      (urdr.scenario.route Item Ids NodeIds) Items Ids NodeIds Acc)
+  _ Ids NodeIds Acc -> [error scenario-routes-type])
+
+(define urdr.scenario.routes-step
+  [error E] Items Ids NodeIds Acc -> [error E]
+  [ok Route] Items Ids NodeIds Acc ->
+    (urdr.scenario.routes-loop Items Ids NodeIds [Route | Acc]))
+
+(define urdr.scenario.route
+  Item Ids NodeIds ->
+    (urdr.scenario.route-fields
+      (urdr.scenario.record-fields
+        Item (urdr.scenario.route-keys) scenario-route-shape)
+      Ids
+      NodeIds))
+
+(define urdr.scenario.route-fields
+  [error E] Ids NodeIds -> [error E]
+  [ok [Fact From To]] Ids NodeIds ->
+    (urdr.scenario.route-fact
+      (urdr.scenario.symbol Fact scenario-route-shape)
+      From
+      To
+      Ids
+      NodeIds))
+
+(define urdr.scenario.route-fact
+  [error E] From To Ids NodeIds -> [error E]
+  [ok Fact] From To Ids NodeIds ->
+    (if (urdr.scenario.reserved-authority? Fact)
+        [error scenario-route-reserved-fact]
+        (urdr.scenario.route-from
+          Fact
+          (urdr.scenario.symbol From scenario-route-shape)
+          To
+          Ids
+          NodeIds)))
+
+(define urdr.scenario.route-from
+  Fact [error E] To Ids NodeIds -> [error E]
+  Fact [ok From] To Ids NodeIds ->
+    (if (urdr.scenario.member? From Ids)
+        (urdr.scenario.route-target Fact From To Ids NodeIds)
+        [error scenario-route-unknown-from]))
+
+(define urdr.scenario.route-target
+  Fact From [symbol Bs] Ids NodeIds ->
+    (if (urdr.scenario.member? Bs Ids)
+        [ok [route Fact From [component Bs]]]
+        [error scenario-route-unknown-target])
+  Fact From [record [[NodeKey [symbol Bs]]]] Ids NodeIds ->
+    (if (= (urdr.canonical.bytes-compare
+             NodeKey (urdr.scenario.n.node))
+           eq)
+        (if (urdr.scenario.member? Bs NodeIds)
+            [ok [route Fact From [node Bs]]]
+            [error scenario-route-unknown-target])
+        [error scenario-route-shape])
+  Fact From _ Ids NodeIds -> [error scenario-route-shape])
+
+\\ ---------------------------------------------------------------------
 \\ observations: named points in logical time (SPEC.md 8, 18).
 \\ ---------------------------------------------------------------------
 
@@ -1135,16 +1294,29 @@
 \\ Top-level validation.
 \\ ---------------------------------------------------------------------
 
+\\ The optional `routes` field selects the expected key list, exactly as
+\\ the roster's optional `model` key does. An absent field validates as
+\\ `none`; the raw value of a present field travels as [some Value] so
+\\ absence and an explicit empty list stay distinct for losslessness.
 (define urdr.scenario.validate
   Value ->
     (let Canonical (urdr.scenario.canonical Value)
       (if (= (hd Canonical) error)
           Canonical
-          (urdr.scenario.validate-fields
-            (urdr.scenario.record-fields
-              Value
-              (urdr.scenario.scenario-keys)
-              scenario-type)))))
+          (urdr.scenario.validate-record
+            (urdr.scenario.record Value scenario-type)))))
+
+(define urdr.scenario.validate-record
+  [error E] -> [error E]
+  [ok Fields] ->
+    (if (urdr.scenario.field-present?
+          (urdr.scenario.n.routes) Fields)
+        (urdr.scenario.validate-routed-fields
+          (urdr.scenario.fields
+            Fields (urdr.scenario.scenario-keys-with-routes) []))
+        (urdr.scenario.validate-fields
+          (urdr.scenario.fields
+            Fields (urdr.scenario.scenario-keys) []))))
 
 (define urdr.scenario.validate-fields
   [error E] -> [error E]
@@ -1153,77 +1325,116 @@
     (urdr.scenario.validate-version
       (urdr.scenario.version Version)
       [Budget Components Determinism Faults Vocabulary
-       Observations Properties Seed Topology]))
+       Observations Properties none Seed Topology]))
+
+(define urdr.scenario.validate-routed-fields
+  [error E] -> [error E]
+  [ok [Budget Components Determinism Faults Vocabulary
+       Observations Properties Routes Seed Topology Version]] ->
+    (urdr.scenario.validate-version
+      (urdr.scenario.version Version)
+      [Budget Components Determinism Faults Vocabulary
+       Observations Properties [some Routes] Seed Topology]))
 
 (define urdr.scenario.validate-version
   [error E] Rest -> [error E]
   [ok Version]
   [Budget Components Determinism Faults Vocabulary
-   Observations Properties Seed Topology] ->
+   Observations Properties Routes Seed Topology] ->
     (urdr.scenario.validate-vocabulary
       (urdr.scenario.vocabulary Vocabulary)
       Version
       [Budget Components Determinism Faults
-       Observations Properties Seed Topology]))
+       Observations Properties Routes Seed Topology]))
 
 (define urdr.scenario.validate-vocabulary
   [error E] Version Rest -> [error E]
   [ok Vocabulary]
   Version
   [Budget Components Determinism Faults
-   Observations Properties Seed Topology] ->
+   Observations Properties Routes Seed Topology] ->
     (urdr.scenario.validate-topology
       (urdr.scenario.topology Topology Vocabulary)
       Version
       Vocabulary
       [Budget Components Determinism Faults
-       Observations Properties Seed]))
+       Observations Properties Routes Seed]))
 
+\\ Routes are checked against the validated roster ids and the declared
+\\ node ids, so the components result is computed once and threaded to
+\\ both consumers; a roster error surfaces as the components slot of the
+\\ assemble chain, before the routes slot is read.
 (define urdr.scenario.validate-topology
   [error E] Version Vocabulary Rest -> [error E]
   [ok [topology Links Nodes]]
   Version
   Vocabulary
   [Budget Components Determinism Faults
-   Observations Properties Seed] ->
+   Observations Properties Routes Seed] ->
+    (urdr.scenario.validate-components
+      (urdr.scenario.components
+        Components (urdr.scenario.node-ids Nodes))
+      Version
+      Vocabulary
+      [topology Links Nodes]
+      [Budget Determinism Faults Observations Properties Routes Seed]))
+
+(define urdr.scenario.validate-components
+  Components
+  Version
+  Vocabulary
+  [topology Links Nodes]
+  [Budget Determinism Faults Observations Properties Routes Seed] ->
     (urdr.scenario.assemble
       Version
       Vocabulary
       [topology Links Nodes]
       (urdr.scenario.budget Budget)
-      (urdr.scenario.components
-        Components (urdr.scenario.node-ids Nodes))
+      Components
       (urdr.scenario.determinism Determinism)
       (urdr.scenario.faults Faults (urdr.scenario.node-ids Nodes))
       (urdr.scenario.observations Observations)
       (urdr.scenario.properties Properties)
+      (urdr.scenario.routes
+        Routes Components (urdr.scenario.node-ids Nodes))
       (urdr.scenario.seed Seed)))
 
 (define urdr.scenario.assemble
   Version Vocabulary Topology
-  [error E] Components Determinism Faults Observations Properties Seed
+  [error E] Components Determinism Faults Observations Properties
+  Routes Seed
     -> [error E]
   Version Vocabulary Topology
-  Budget [error E] Determinism Faults Observations Properties Seed
+  Budget [error E] Determinism Faults Observations Properties
+  Routes Seed
     -> [error E]
   Version Vocabulary Topology
-  Budget Components [error E] Faults Observations Properties Seed
+  Budget Components [error E] Faults Observations Properties
+  Routes Seed
     -> [error E]
   Version Vocabulary Topology
-  Budget Components Determinism [error E] Observations Properties Seed
+  Budget Components Determinism [error E] Observations Properties
+  Routes Seed
     -> [error E]
   Version Vocabulary Topology
-  Budget Components Determinism Faults [error E] Properties Seed
+  Budget Components Determinism Faults [error E] Properties
+  Routes Seed
     -> [error E]
   Version Vocabulary Topology
-  Budget Components Determinism Faults Observations [error E] Seed
+  Budget Components Determinism Faults Observations [error E]
+  Routes Seed
     -> [error E]
   Version Vocabulary Topology
-  Budget Components Determinism Faults Observations Properties [error E]
+  Budget Components Determinism Faults Observations Properties
+  [error E] Seed
+    -> [error E]
+  Version Vocabulary Topology
+  Budget Components Determinism Faults Observations Properties
+  Routes [error E]
     -> [error E]
   Version Vocabulary Topology
   [ok Budget] [ok Components] [ok Determinism] [ok Faults]
-  [ok Observations] [ok Properties] [ok Seed] ->
+  [ok Observations] [ok Properties] [ok Routes] [ok Seed] ->
     [ok [scenario/v1
           Budget
           Components
@@ -1232,6 +1443,7 @@
           Vocabulary
           Observations
           Properties
+          Routes
           Seed
           Topology]])
 
@@ -1250,35 +1462,42 @@
 \\ ---------------------------------------------------------------------
 
 (define urdr.scenario.valid?
-  [scenario/v1 _ _ _ _ _ _ _ _ _] -> true
+  [scenario/v1 _ _ _ _ _ _ _ _ _ _] -> true
   _ -> false)
 
 (define urdr.scenario.budget-of
-  [scenario/v1 Budget _ _ _ _ _ _ _ _] -> Budget)
+  [scenario/v1 Budget _ _ _ _ _ _ _ _ _] -> Budget)
 
 (define urdr.scenario.components-of
-  [scenario/v1 _ Components _ _ _ _ _ _ _] -> Components)
+  [scenario/v1 _ Components _ _ _ _ _ _ _ _] -> Components)
 
 (define urdr.scenario.determinism-of
-  [scenario/v1 _ _ Determinism _ _ _ _ _ _] -> Determinism)
+  [scenario/v1 _ _ Determinism _ _ _ _ _ _ _] -> Determinism)
 
 (define urdr.scenario.faults-of
-  [scenario/v1 _ _ _ Faults _ _ _ _ _] -> Faults)
+  [scenario/v1 _ _ _ Faults _ _ _ _ _ _] -> Faults)
 
 (define urdr.scenario.vocabulary-of
-  [scenario/v1 _ _ _ _ Vocabulary _ _ _ _] -> Vocabulary)
+  [scenario/v1 _ _ _ _ Vocabulary _ _ _ _ _] -> Vocabulary)
 
 (define urdr.scenario.observations-of
-  [scenario/v1 _ _ _ _ _ Observations _ _ _] -> Observations)
+  [scenario/v1 _ _ _ _ _ Observations _ _ _ _] -> Observations)
 
 (define urdr.scenario.properties-of
-  [scenario/v1 _ _ _ _ _ _ Properties _ _] -> Properties)
+  [scenario/v1 _ _ _ _ _ _ Properties _ _ _] -> Properties)
+
+\\ Downstream consumers read the route list; the none/[routes ...]
+\\ distinction exists only so rendering can reproduce the declaration
+\\ byte for byte.
+(define urdr.scenario.routes-of
+  [scenario/v1 _ _ _ _ _ _ _ none _ _] -> []
+  [scenario/v1 _ _ _ _ _ _ _ [routes Routes] _ _] -> Routes)
 
 (define urdr.scenario.seed-of
-  [scenario/v1 _ _ _ _ _ _ _ Seed _] -> Seed)
+  [scenario/v1 _ _ _ _ _ _ _ _ Seed _] -> Seed)
 
 (define urdr.scenario.topology-of
-  [scenario/v1 _ _ _ _ _ _ _ _ Topology] -> Topology)
+  [scenario/v1 _ _ _ _ _ _ _ _ _ Topology] -> Topology)
 
 (define urdr.scenario.nodes-of
   [topology _ Nodes] -> Nodes)
@@ -1362,6 +1581,21 @@
         [(urdr.scenario.n.spec) Spec]]]
      | (urdr.scenario.properties-value Rest)])
 
+(define urdr.scenario.route-target-value
+  [component Id] -> [symbol Id]
+  [node N] ->
+    [record [[(urdr.scenario.n.node) [symbol N]]]])
+
+(define urdr.scenario.routes-value
+  [] -> []
+  [[route Fact From Target] | Rest] ->
+    [[record
+       [[(urdr.scenario.n.fact) [symbol Fact]]
+        [(urdr.scenario.n.from) [symbol From]]
+        [(urdr.scenario.n.to)
+         (urdr.scenario.route-target-value Target)]]]
+     | (urdr.scenario.routes-value Rest)])
+
 (define urdr.scenario.nodes-value
   [] -> []
   [[node Address Id] | Rest] ->
@@ -1386,9 +1620,11 @@
        [(urdr.scenario.n.nodes)
         [list (urdr.scenario.nodes-value Nodes)]]]])
 
+\\ Validation is lossless: absent routes render no `routes` key, so
+\\ encode(value(validate(decode(frame)))) reproduces the frame bytes.
 (define urdr.scenario.value
   [scenario/v1 Budget Components Determinism Faults Vocabulary
-               Observations Properties Seed Topology] ->
+               Observations Properties none Seed Topology] ->
     [record
       [[(urdr.scenario.n.budget)
         (urdr.scenario.budget-value Budget)]
@@ -1403,6 +1639,29 @@
         [list (urdr.scenario.observations-value Observations)]]
        [(urdr.scenario.n.properties)
         [list (urdr.scenario.properties-value Properties)]]
+       [(urdr.scenario.n.seed) [bytes Seed]]
+       [(urdr.scenario.n.topology)
+        (urdr.scenario.topology-value Topology)]
+       [(urdr.scenario.n.version)
+        [symbol (urdr.scenario.n.scenario.v1)]]]]
+  [scenario/v1 Budget Components Determinism Faults Vocabulary
+               Observations Properties [routes Routes] Seed Topology] ->
+    [record
+      [[(urdr.scenario.n.budget)
+        (urdr.scenario.budget-value Budget)]
+       [(urdr.scenario.n.components)
+        [list (urdr.scenario.components-value Components)]]
+       [(urdr.scenario.n.determinism) [symbol Determinism]]
+       [(urdr.scenario.n.faults)
+        [list (urdr.scenario.faults-value Faults)]]
+       [(urdr.scenario.n.header-vocabulary)
+        [list (urdr.scenario.vocabulary-value Vocabulary)]]
+       [(urdr.scenario.n.observations)
+        [list (urdr.scenario.observations-value Observations)]]
+       [(urdr.scenario.n.properties)
+        [list (urdr.scenario.properties-value Properties)]]
+       [(urdr.scenario.n.routes)
+        [list (urdr.scenario.routes-value Routes)]]
        [(urdr.scenario.n.seed) [bytes Seed]]
        [(urdr.scenario.n.topology)
         (urdr.scenario.topology-value Topology)]

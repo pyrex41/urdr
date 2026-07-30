@@ -36,28 +36,28 @@
       "name": "world-reducer",
       "mode": "script",
       "program": "shen/tests/world/run-tests.shen",
-      "program_sha256": "76277be48821fc9bb6b4846d7b8033f4abf601de3bf0a821fd2f9a748fdcd9d0",
+      "program_sha256": "3ab09106d211a16e4e884a1779902fce4098bda9a7ac0b537a041fc754aa48ec",
       "expect": "marker",
       "marker": "ALL PASS",
       "heavy": true,
       "fixture_manifest": null,
       "fixture_manifest_sha256": null,
       "raw_golden_path": "shen/tests/world/golden.txt",
-      "raw_golden_sha256": "bb1e33bd484049cc505273b172a4919628f26bcefdf5d3bb04ffc3cc2f792186",
+      "raw_golden_sha256": "dd6830bc815588bef7f73931d978f70d02e671a0a03ce67b0e178aa030f4b9fc",
       "doc": "World reduction, event ordering, replay, named streams, and trace"
     },
     {
       "name": "scenario-parse",
       "mode": "script",
       "program": "shen/tests/scenario/run-tests.shen",
-      "program_sha256": "b20d966da11a861527f49e469db111f423f3458d8aede61f11e628b8fd045829",
+      "program_sha256": "b263d6f5c173602a7c4dc6bbdb9e8c45465b3205f2daaf06e65303c008073e6a",
       "expect": "marker",
       "marker": "ALL PASS",
       "heavy": true,
       "fixture_manifest": "protocol/fixtures/v1/scenario/SHA256SUMS",
-      "fixture_manifest_sha256": "d0cbb57b0c7c0e0d79e28e2a08c6517bb543b59462cf7aafb27eee8bfa366332",
+      "fixture_manifest_sha256": "26665e6582acfdd57c49d384b1467b48f33746e33e7fdb8c0ce2380ce7a5cc98",
       "raw_golden_path": null,
-      "raw_golden_sha256": "e01b82841a58b635c783a0270e4d6f0e074770f35ca13ec6e052f129e7f34c0c",
+      "raw_golden_sha256": "145945fdc66dbb9c2f0993618bcd7815e574f0771b3d51967f49f63f111f0924",
       "doc": "Scenario DSL parse, validation, profiles, and fixture rejection"
     },
     {
@@ -92,14 +92,14 @@
       "name": "models-conformance",
       "mode": "script",
       "program": "shen/tests/models/run-tests.shen",
-      "program_sha256": "6d69750667d969a98afe1a9452ac9756bccc0f747996e31c5dd89c95abf09d3f",
+      "program_sha256": "744a442fdfe6dcaf8b0534478c6b7ac5ce509fc5c0ac481d88dd6646d626bddd",
       "expect": "marker",
       "marker": "ALL PASS",
       "heavy": true,
       "fixture_manifest": null,
       "fixture_manifest_sha256": null,
       "raw_golden_path": "shen/tests/models/golden.txt",
-      "raw_golden_sha256": "9381e0dcd36251d7cd21f6e2ba998e0a96804ef3866618bad7460bd43d01a961",
+      "raw_golden_sha256": "de2e84f213a40eb3d46b44706f48a3b654593baa1b2609ec2d8594ee0d2ad4b9",
       "doc": "Net, timer, and fault components plus the NetKAT witness bridge"
     },
     {
@@ -127,7 +127,7 @@
       "fixture_manifest": null,
       "fixture_manifest_sha256": null,
       "raw_golden_path": "shen/tests/replay/golden.txt",
-      "raw_golden_sha256": "046595da6c92a60bc2620fc3de8243e927ef07f64a7dbfe0897e6324542d6cba",
+      "raw_golden_sha256": "0bfbf82587fb5633c50e21a8ed03463cb03ce14b82fc563e8ad2b72af228d82f",
       "doc": "Event records, transcript replay, certificates, and run identity"
     },
     {
@@ -169,7 +169,7 @@
       "fixture_manifest": null,
       "fixture_manifest_sha256": null,
       "raw_golden_path": "shen/tests/integration/golden.txt",
-      "raw_golden_sha256": "2aa91ff5c7c9e17722aa99239c33712fc9ec30397783ddf70eee610340282b49",
+      "raw_golden_sha256": "d9c67714a6033f92599eb360a2c3cb4b010431ae8df9db2e1e5effa7b33336d8",
       "doc": "M1 abstract-world exit demonstration (partition-retry)"
     }
   ]

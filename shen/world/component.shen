@@ -25,6 +25,9 @@
 \\ who it is, and a component that claims `self` in a structural position
 \\ of its output would be asserting an identity only the kernel may bind.
 \\ Written as literal octets because this is the scan hot path.
+\\ Mirror: urdr.scenario.reserved-authorities (shen/scenario/scenario.shen)
+\\ duplicates these nine octet lists for the route-fact check, because the
+\\ scenario DSL may not depend on the world side; change both together.
 (define urdr.component.reserved
   -> [[99 104 111 105 99 101]
       [99 104 111 105 99 101 45 105 100]
