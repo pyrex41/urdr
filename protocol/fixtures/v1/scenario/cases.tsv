@@ -59,11 +59,16 @@ X|component-kind-type|invalid/component-kind-type.frame|scenario-component-kind-
 # selects the expected key list, so absence stays legal; a non-symbol
 # model fails with its own scenario code, while a duplicated or
 # misplaced model key never reaches the scenario layer because the
-# canonical decoder rejects the record first (ADR 0002 codes).
+# canonical decoder rejects the record first (ADR 0002 codes). A model
+# bound on a non-`process` kind is rejected with its own code: the
+# registry dispatches on model presence before it consults the kind,
+# so only this validation door keeps a bound net/timer/fault entry
+# from silently building as that model's process.
 V|component-model|valid/component-model.frame
 X|component-model-type|invalid/component-model-type.frame|scenario-component-model-type
 X|component-model-duplicate|invalid/component-model-duplicate.frame|record-duplicate
 X|component-model-misplaced|invalid/component-model-misplaced.frame|record-order
+X|component-model-kind|invalid/component-model-kind.frame|scenario-component-model-kind
 X|faults-type|invalid/faults-type.frame|scenario-faults-type
 X|fault-kind-unsupported|invalid/fault-kind-unsupported.frame|scenario-fault-kind-unsupported
 X|fault-kinds-empty|invalid/fault-kinds-empty.frame|scenario-fault-kinds-empty
