@@ -44,9 +44,13 @@
 (define uwt.purpose
   -> [116 105 101 45 98 114 101 97 107])
 
+\\ Strictly ascending in canonical encoding order, which the reducer now
+\\ requires of scheduled choice alternatives. Canonical atoms are
+\\ length-prefixed, so beta ("4:beta") encodes before alpha ("5:alpha");
+\\ alphabetical order would be rejected.
 (define uwt.alternatives
-  -> [[symbol [97 108 112 104 97]]
-      [symbol [98 101 116 97]]
+  -> [[symbol [98 101 116 97]]
+      [symbol [97 108 112 104 97]]
       [symbol [103 97 109 109 97]]])
 
 (define uwt.property-id
@@ -259,6 +263,41 @@
              Reduction
              [105 110 118 97 108 105 100 45 101 118 101 110 116])
            (= (urdr.world.reduction-world Reduction) Final))))
+
+\\ Positional selection makes alternative order semantic: a scheduled
+\\ choice whose alternatives are not strictly ascending in canonical
+\\ encoding order — a permutation (alphabetical [alpha beta] encodes
+\\ descending) or a duplicate — is rejected fail-closed under its own
+\\ stable code, choice-alternatives-order, before any state change.
+(define uwt.order-code
+  -> [99 104 111 105 99 101 45 97 108 116 101 114 110 97 116 105 118
+      101 115 45 111 114 100 101 114])
+
+(define uwt.choice-order-rejected?
+  Fixture Alternatives ->
+    (let W0 (uwt.initial Fixture)
+         Reduction (urdr.world.reduce
+                     W0
+                     [schedule (uwt.base Fixture) choice
+                       [choice
+                         (uwt.subsystem)
+                         (uwt.actor-a)
+                         (uwt.purpose)
+                         Alternatives]])
+      (and (uwt.error? Reduction (uwt.order-code))
+           (= (urdr.world.reduction-world Reduction) W0))))
+
+(define uwt.unordered-choice-rejected?
+  Fixture ->
+    (uwt.choice-order-rejected?
+      Fixture
+      [[symbol [97 108 112 104 97]] [symbol [98 101 116 97]]]))
+
+(define uwt.duplicate-choice-rejected?
+  Fixture ->
+    (uwt.choice-order-rejected?
+      Fixture
+      [[symbol [98 101 116 97]] [symbol [98 101 116 97]]]))
 
 \\ Modeled-component fixtures (ADR 0004 Decision 1). One well-behaved
 \\ component and one variant per banned authority, each of which must be
@@ -627,7 +666,7 @@
           (do
             (output "WORLD-TRACE ~A~%" Hex)
             (output "WORLD-COMPONENT-TRACE ~A~%" ComponentHex)
-            (output "WORLD TESTS: 21/21 PASS~%")
+            (output "WORLD TESTS: 22/22 PASS~%")
             (output "ALL PASS~%")
             true))
         (do
@@ -654,6 +693,8 @@
           (uwt.invalid-time? Fixture)
           (and (uwt.stale-and-rollback? Fixture)
                (uwt.invalid-event? Fixture))
+          (and (uwt.unordered-choice-rejected? Fixture)
+               (uwt.duplicate-choice-rejected? Fixture))
           (= (length (uwt.creductions Components)) 4)
           (uwt.component-run? Components)
           (uwt.component-isolation? Components)

@@ -1,6 +1,7 @@
 \\ Seeded exploration: choice records, strategies, and the explore driver
 \\ (SPEC.md 17, M1 plan Wave F). Requires shen/protocol/canonical.shen,
-\\ shen/world/integer.shen, shen/world/prng.shen, shen/world/world.shen,
+\\ shen/world/integer.shen, shen/world/prng.shen,
+\\ shen/world/component.shen (encoding order), shen/world/world.shen,
 \\ shen/world/eventlog.shen, and shen/world/certificate.shen to be loaded
 \\ by the caller.
 \\
@@ -47,9 +48,12 @@
 \\
 \\   [menu Id At Kind Subsystem Actor Purpose Alternatives]
 \\
-\\ Alternatives are nonempty and must already be in canonical order (the
-\\ component contract). The strategy never reorders them for selection
-\\ identity; boundary bias only reweights a parallel index bag.
+\\ Alternatives are nonempty and strictly ascending in canonical
+\\ encoding order (the component contract, enforced here as
+\\ search-menu-order and again by the reducer as
+\\ choice-alternatives-order). The strategy never reorders them for
+\\ selection identity; boundary bias only reweights a parallel index
+\\ bag.
 \\
 \\ =====================================================================
 \\ 2. Strategies
@@ -157,6 +161,9 @@
   c-menu-empty ->
     [115 101 97 114 99 104 45 109 101 110 117 45 101 109 112 116
      121]
+  c-menu-order ->
+    [115 101 97 114 99 104 45 109 101 110 117 45 111 114 100 101
+     114]
   c-kind ->
     [115 101 97 114 99 104 45 107 105 110 100]
   c-strategy ->
@@ -220,6 +227,19 @@
          (urdr.search.canonical-list? Vs))
   _ -> false)
 
+\\ Strict ascension in canonical encoding order, the same comparison the
+\\ component and world-reducer doors enforce
+\\ (urdr.component.encoding-ascending?). Rejecting an unordered menu at
+\\ construction gives strategy authors the error where they built it,
+\\ not at reduce time. Callers must have proved the list canonically
+\\ encodable first: the comparison reads encodings.
+(define urdr.search.ascending?
+  [] -> true
+  [_] -> true
+  [A B | Rest] ->
+    (and (urdr.component.encoding-ascending? A B)
+         (urdr.search.ascending? [B | Rest])))
+
 (define urdr.search.nth
   0 [X | _] -> X
   N [_ | Xs] -> (urdr.search.nth (- N 1) Xs))
@@ -267,6 +287,8 @@
             [error (urdr.search.n c-menu-empty) [null]]
             (if (not (urdr.search.canonical-list? Alternatives))
                 [error (urdr.search.n c-alts) [null]]
+                (if (not (urdr.search.ascending? Alternatives))
+                    [error (urdr.search.n c-menu-order) [null]]
                 (if (not (= (hd (urdr.prng.octets.check Subsystem)) ok))
                     [error (urdr.search.n c-menu-shape) [null]]
                     (if (not (= (hd (urdr.prng.octets.check Actor)) ok))
@@ -275,7 +297,7 @@
                                     ok))
                             [error (urdr.search.n c-menu-shape) [null]]
                             [ok [menu Id At Kind Subsystem Actor Purpose
-                                  Alternatives]])))))))
+                                  Alternatives]]))))))))
 
 (define urdr.search.menu-id
   [menu Id _ _ _ _ _ _] -> Id)
