@@ -123,9 +123,10 @@
 (define ues.world
   -> (let R (urdr.world.initial-with-components
               (ues.seed)
-              [[component (ues.comp-name)
+              [(urdr.component.entry
+                 (ues.comp-name)
                  (/. S E (ues.counter S E))
-                 (ues.counter-state 0)]])
+                 (ues.counter-state 0))])
        (if (= (hd R) ok) (hd (tl R)) R)))
 
 (define ues.advance -> [advance-to-next-event])

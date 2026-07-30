@@ -127,9 +127,10 @@ recorded so the foreman can pin them. *\
 (define uit.world
   -> (let R (urdr.world.initial-with-components
               (uit.seed)
-              [[component (uit.comp-name)
+              [(urdr.component.entry
+                 (uit.comp-name)
                  (/. S E (uit.counter S E))
-                 (uit.counter-state 0)]])
+                 (uit.counter-state 0))])
        (if (= (hd R) ok) (hd (tl R)) R)))
 
 (define uit.advance -> [advance-to-next-event])

@@ -361,11 +361,24 @@
 (define uwt.shapeless
   State _ -> [stepped State])
 
-\\ Misbehaving: echoes the logical time it was given back as a fact, which
-\\ claims a time advance.
+\\ Misbehaving: writes logical time back as a fact key, which claims a
+\\ time advance. (It no longer echoes the whole event: the event record
+\\ now carries the reserved `self` key first, which would mask the time
+\\ claim under scan order.)
 (define uwt.ticker
   State Event ->
-    [step State [[fact [116 105 99 107 101 100] Event]] []])
+    [step
+      State
+      [[fact [116 105 99 107 101 100]
+         [record [[[116 105 109 101] [null]]]]]]
+      []])
+
+\\ Misbehaving: echoes the event it was handed back as a fact, which
+\\ claims the reserved `self` identity key (ADR 0007 D3) — the first
+\\ reserved name the scan meets in input < self < time < type order.
+(define uwt.selfish
+  State Event ->
+    [step State [[fact [101 99 104 111 101 100] Event]] []])
 
 \\ Misbehaving: offers alternatives out of canonical order.
 (define uwt.unordered
@@ -387,9 +400,9 @@
 \\ component alone. Registry entries ascend strictly by name.
 (define uwt.pair-registry
   Name Handler ->
-    [[component (uwt.counter-name)
-       (/. S E (uwt.counter S E)) (uwt.zero-state)]
-     [component Name Handler (uwt.zero-state)]])
+    [(urdr.component.entry
+       (uwt.counter-name) (/. S E (uwt.counter S E)) (uwt.zero-state))
+     (urdr.component.entry Name Handler (uwt.zero-state))])
 
 (define uwt.pair-world
   Name Handler ->
@@ -455,7 +468,7 @@
                  99 104 111 105 99 101]]]]])
 
 (define uwt.entry-state
-  [component _ _ State] -> State
+  [component _ _ State _] -> State
   _ -> none)
 
 (define uwt.component-state-of
@@ -528,9 +541,10 @@
 (define uwt.claim
   Name -> [symbol (urdr.canonical.string-bytes Name)])
 
-\\ The four banned authorities of ADR 0004 Decision 1, one fixture each:
-\\ direct event emission, identifier allocation, an implied time advance,
-\\ and a non-canonical result. The reducer names the claimed authority.
+\\ The banned authorities of ADR 0004 Decision 1 (extended by ADR 0007
+\\ D3's `self`), one fixture each: direct event emission, identifier
+\\ allocation, an implied time advance, an identity claim, and a
+\\ non-canonical result. The reducer names the claimed authority.
 (define uwt.misbehaviour?
   -> (and (uwt.fail-closed?
             (uwt.emitter-name)
@@ -547,11 +561,16 @@
                       (/. S E (uwt.ticker S E))
                       "component-fact-authority"
                       (uwt.claim "time"))
-                    (uwt.fail-closed?
-                      [110 111 110 99 97 110 111 110 105 99 97 108]
-                      (/. S E (uwt.noncanonical S E))
-                      "component-state-invalid"
-                      [null])))))
+                    (and (uwt.fail-closed?
+                           [115 101 108 102 105 115 104]
+                           (/. S E (uwt.selfish S E))
+                           "component-fact-authority"
+                           (uwt.claim "self"))
+                         (uwt.fail-closed?
+                           [110 111 110 99 97 110 111 110 105 99 97 108]
+                           (/. S E (uwt.noncanonical S E))
+                           "component-state-invalid"
+                           [null]))))))
 
 (define uwt.malformed?
   -> (and (uwt.fail-closed?
@@ -609,14 +628,38 @@
                (urdr.world.snapshot-frame W0)))))
 
 (define uwt.duplicate-registry
-  -> [[component (uwt.counter-name)
-        (/. S E (uwt.counter S E)) (uwt.zero-state)]
-      [component (uwt.counter-name)
-        (/. S E (uwt.counter S E)) (uwt.zero-state)]])
+  -> [(urdr.component.entry
+        (uwt.counter-name) (/. S E (uwt.counter S E)) (uwt.zero-state))
+      (urdr.component.entry
+        (uwt.counter-name) (/. S E (uwt.counter S E)) (uwt.zero-state))])
 
 (define uwt.bad-state-registry
-  -> [[component (uwt.counter-name)
-        (/. S E (uwt.counter S E)) [oops]]])
+  -> [(urdr.component.entry
+        (uwt.counter-name) (/. S E (uwt.counter S E)) [oops])])
+
+\\ META is validated at registration exactly like state: a malformed
+\\ META record and a bad META field carry their own stable codes.
+(define uwt.bad-meta-registry
+  Meta ->
+    [[component (uwt.counter-name)
+       (/. S E (uwt.counter S E)) (uwt.zero-state) Meta]])
+
+(define uwt.meta-rejected?
+  -> (and (= (urdr.world.initial-with-components
+               (uwt.seed)
+               (uwt.bad-meta-registry [record [[[110 111 100 101] [null]]]]))
+             [error (urdr.canonical.string-bytes
+                      "component-meta-shape")
+                    [null]])
+          (= (urdr.world.initial-with-components
+               (uwt.seed)
+               (uwt.bad-meta-registry
+                 [record
+                   [[[109 111 100 101 108] [null]]
+                    [[110 111 100 101] [symbol [116 105 109 101]]]]]))
+             [error (urdr.canonical.string-bytes
+                      "component-meta-value")
+                    [null]])))
 
 (define uwt.registry-rejected?
   -> (and (= (urdr.world.initial-with-components
@@ -624,11 +667,12 @@
              [error (urdr.canonical.string-bytes
                       "component-registry-order")
                     [symbol (uwt.counter-name)]])
-          (= (urdr.world.initial-with-components
-               (uwt.seed) (uwt.bad-state-registry))
-             [error (urdr.canonical.string-bytes
-                      "component-state-invalid")
-                    [null]])))
+          (and (= (urdr.world.initial-with-components
+                    (uwt.seed) (uwt.bad-state-registry))
+                  [error (urdr.canonical.string-bytes
+                           "component-state-invalid")
+                         [null]])
+               (uwt.meta-rejected?))))
 
 (define uwt.component-trace-value
   Fixture ->

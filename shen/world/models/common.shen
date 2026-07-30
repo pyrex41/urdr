@@ -14,9 +14,11 @@ Components here never draw randomness, never allocate identifiers, never
 advance logical time, and never select among the alternatives they
 publish. The reserved-authority scan of shen/world/component.shen rejects
 any state, fact, or choice whose record keys or symbol values name
-choice, choice-id, command, coordinates, event, event-id, seed, or time,
-so no model below uses those names for anything. Logical time arrives as
-the event's read-only `time` key and is never written back.
+choice, choice-id, command, coordinates, event, event-id, seed, self, or
+time, so no model below uses those names for anything. Logical time
+arrives as the event's read-only `time` key and the component's declared
+identity as the read-only `self` key (ADR 0007 D3); neither is ever
+written back.
 
 Alternatives inside one choice must be strictly ascending in canonical
 encoding order, so every model builds them through
@@ -194,11 +196,20 @@ compares and drops exact duplicates. *\
 (define urdr.model.common.n.input
   -> (urdr.canonical.string-bytes "input"))
 
+(define urdr.model.common.n.self
+  -> (urdr.canonical.string-bytes "self"))
+
 (define urdr.model.common.n.time
   -> (urdr.canonical.string-bytes "time"))
 
 (define urdr.model.common.event-input
   Event -> (urdr.model.common.get Event (urdr.model.common.n.input)))
+
+\\ The component's declared identity, a record binding `id` and `node`
+\\ (ADR 0007 D3). Models read it; they never assert it back — `self` is
+\\ on the reserved-authority list.
+(define urdr.model.common.event-self
+  Event -> (urdr.model.common.get Event (urdr.model.common.n.self)))
 
 (define urdr.model.common.event-now
   Event ->

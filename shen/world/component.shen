@@ -20,7 +20,10 @@
 
 \\ Authorities reserved to the world kernel: emitting world constructs
 \\ (choice, command, event), allocating identifiers (choice-id, event-id),
-\\ advancing logical time (time), and randomness (coordinates, seed).
+\\ advancing logical time (time), randomness (coordinates, seed), and
+\\ component identity (self, ADR 0007 D3): the reducer tells a component
+\\ who it is, and a component that claims `self` in a structural position
+\\ of its output would be asserting an identity only the kernel may bind.
 \\ Written as literal octets because this is the scan hot path.
 (define urdr.component.reserved
   -> [[99 104 111 105 99 101]
@@ -30,6 +33,7 @@
       [101 118 101 110 116]
       [101 118 101 110 116 45 105 100]
       [115 101 101 100]
+      [115 101 108 102]
       [116 105 109 101]])
 
 (define urdr.component.member?
@@ -262,13 +266,72 @@
       (trap-error (Handler State Event)
                   (/. Raised (urdr.component.raised)))))
 
-\\ A registry entry is [component NAME HANDLER STATE]. NAME is a canonical
-\\ symbol and entries ascend strictly by name. HANDLER is the component's
-\\ transition function: code, not world state, and never encoded, compared,
-\\ or hashed. STATE is a canonical value.
+\\ A registry entry is [component NAME HANDLER STATE META]. NAME is a
+\\ canonical symbol and entries ascend strictly by name. HANDLER is the
+\\ component's transition function: code, not world state, and never
+\\ encoded, compared, or hashed. STATE is a canonical value. META is a
+\\ validated canonical record binding the component's declared identity
+\\ (ADR 0007 D3): exactly the keys `model` and `node`, in that (ascending
+\\ ASCII) order, each value either [null] or a canonical symbol that does
+\\ not usurp a reserved authority. The reducer reads META to build the
+\\ `self` key of every event it hands the component.
+(define urdr.component.n.model
+  -> [109 111 100 101 108])
+
+(define urdr.component.n.node
+  -> [110 111 100 101])
+
+(define urdr.component.meta-value
+  none -> [null]
+  Bs -> [symbol Bs])
+
+(define urdr.component.meta
+  Model Node ->
+    [record
+      [[(urdr.component.n.model) (urdr.component.meta-value Model)]
+       [(urdr.component.n.node) (urdr.component.meta-value Node)]]])
+
+(define urdr.component.meta-empty
+  -> (urdr.component.meta none none))
+
+\\ Convenience constructor for entries with no declared identity: test
+\\ fixtures and single-component harnesses stay terse, while the stored
+\\ entry shape stays uniform at five elements.
+(define urdr.component.entry
+  Name Handler State ->
+    [component Name Handler State (urdr.component.meta-empty)])
+
+\\ Accessors over a META record already proved valid at registration.
+(define urdr.component.meta-model-value
+  [record [[_ Model] [_ _]]] -> Model
+  _ -> [null])
+
+(define urdr.component.meta-node-value
+  [record [[_ _] [_ Node]]] -> Node
+  _ -> [null])
+
+(define urdr.component.meta-field-ok?
+  [null] -> true
+  [symbol Bs] -> (urdr.component.name-valid? Bs)
+  _ -> false)
+
+\\ Fail-closed META validation at registration: wrong record shape and a
+\\ bad field value carry distinct stable codes so a malformed entry names
+\\ what it got wrong.
+(define urdr.component.meta-check
+  [record [[ModelKey Model] [NodeKey Node]]] ->
+    (if (and (= ModelKey (urdr.component.n.model))
+             (= NodeKey (urdr.component.n.node)))
+        (if (and (urdr.component.meta-field-ok? Model)
+                 (urdr.component.meta-field-ok? Node))
+            [ok]
+            [error (urdr.component.code "component-meta-value") [null]])
+        [error (urdr.component.code "component-meta-shape") [null]])
+  _ -> [error (urdr.component.code "component-meta-shape") [null]])
+
 (define urdr.component.shape-loop
   [] _ -> true
-  [[component Name _ _] | Rest] Previous ->
+  [[component Name _ _ _] | Rest] Previous ->
     (and (urdr.component.name-valid? Name)
          (and (urdr.component.after? Previous Name)
               (urdr.component.shape-loop Rest Name)))
@@ -281,12 +344,18 @@
   Registry -> (urdr.component.shape-loop Registry none))
 
 (define urdr.component.registry-step
+  [ok] Meta Rest Name ->
+    (urdr.component.registry-meta
+      (urdr.component.meta-check Meta) Rest Name)
+  Error _ _ _ -> Error)
+
+(define urdr.component.registry-meta
   [ok] Rest Name -> (urdr.component.registry-loop Rest Name)
   Error _ _ -> Error)
 
 (define urdr.component.registry-loop
   [] _ -> [ok]
-  [[component Name _ State] | Rest] Previous ->
+  [[component Name _ State Meta] | Rest] Previous ->
     (if (not (urdr.component.name-valid? Name))
         [error (urdr.component.code "component-registry-name") [null]]
         (if (urdr.component.after? Previous Name)
@@ -295,12 +364,13 @@
                 State
                 "component-state-invalid"
                 "component-state-authority")
+              Meta
               Rest
               Name)
             [error (urdr.component.code "component-registry-order")
                    [symbol Name]]))
   _ _ -> [error (urdr.component.code "component-registry-shape") [null]])
 
-\\ Full construction-time validation, including component states.
+\\ Full construction-time validation, including component states and META.
 (define urdr.component.registry-valid?
   Registry -> (urdr.component.registry-loop Registry none))

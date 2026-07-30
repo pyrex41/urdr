@@ -179,9 +179,10 @@
   _ _ -> (urdr.model.common.error "counter-unknown-input"))
 
 (define urt.a-registry
-  -> [[component (urt.a-name)
+  -> [(urdr.component.entry
+        (urt.a-name)
         (/. S E (urt.counter S E))
-        (urt.counter-state (urdr.int.zero))]])
+        (urt.counter-state (urdr.int.zero)))])
 
 (define urt.world-of
   [ok World] -> World
@@ -316,8 +317,10 @@
     (urdr.model.registry.from-scenario
       Scenario
       (urt.nk-baseline)
-      (/. S E (urt.counter S E))
-      (urt.counter-state (urdr.int.zero)))
+      (urdr.model.registry.kind-table
+        (/. S E (urt.counter S E))
+        (urt.counter-state (urdr.int.zero)))
+      [])
   Error -> Error)
 
 (define urt.b-world-of
