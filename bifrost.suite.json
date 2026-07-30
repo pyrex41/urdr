@@ -162,14 +162,14 @@
       "name": "m1-integration",
       "mode": "script",
       "program": "shen/tests/integration/run-tests.shen",
-      "program_sha256": "7d0e00f397cab920a357b59d586809576e4135d8921f10ce672465271f23a6ee",
+      "program_sha256": "817ced256e1dba909fcba7ad55c62160b04067e8ceb34b56d33cf70b095b4536",
       "expect": "marker",
       "marker": "ALL PASS",
       "heavy": true,
       "fixture_manifest": null,
       "fixture_manifest_sha256": null,
       "raw_golden_path": "shen/tests/integration/golden.txt",
-      "raw_golden_sha256": "8a28fa45d427930ee53edce0bd13a47a6d672a6958e14fff52afee9de51473d6",
+      "raw_golden_sha256": "cf808bfc9cf10babf68da390db2fe18d55c59f124762dc942d4a233a0386fb0e",
       "doc": "M1 abstract-world exit demonstration (partition-retry)"
     },
     {

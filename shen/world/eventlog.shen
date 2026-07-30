@@ -693,16 +693,29 @@
 \\ State hashes
 \\ ---------------------------------------------------------------
 
-\\ A state hash is over the canonically encoded world snapshot value, and
-\\ a snapshot that does not encode under the m0 profile is a fail-closed
-\\ run error with its own code -- not a skipped hash, and not the generic
-\\ payload-encode code, because the two have different remedies (a
-\\ smaller payload versus a run with fewer verdicts or components).
+\\ A state hash is over the canonically encoded world snapshot value,
+\\ under the m1-large profile -- the profile the snapshot's own
+\\ per-component state digests and facts root already use (ADR 0008 D1:
+\\ a snapshot has no content-address escape hatch, so the wider profile
+\\ is the correct one; payload SLOTS keep m0 because they can content-
+\\ address overflow, a state hash cannot). The m0 budget's 256 decoded
+\\ nodes cannot hold a legally reached world of scenario scale: five
+\\ registry entries with META plus a declared route table already
+\\ exceed it, and "legal to reduce" must imply "hashable here" exactly
+\\ as "legal to emit" implies "digestible" for facts. Profiles bound,
+\\ they never change encoding bytes, so every digest that existed
+\\ under m0 is byte-identical under this profile -- widening moves no
+\\ pinned golden. A snapshot that still fails to encode is a
+\\ fail-closed run error with its own code -- not a skipped hash, and
+\\ not the generic payload-encode code, because the two have different
+\\ remedies (a smaller payload versus a run with fewer verdicts or
+\\ components).
 (define urdr.eventlog.state-digest
   World ->
     (if (urdr.world.valid? World)
         (urdr.eventlog.state-digest-of
-          (urdr.canonical.encode-payload
+          (urdr.canonical.encode-payload-with-profile
+            (urdr.canonical.profile.m1-large)
             (urdr.world.snapshot-value World)))
         [error eventlog-invalid-world [null]]))
 
