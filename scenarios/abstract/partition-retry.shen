@@ -105,13 +105,25 @@ shen/scenario/scenario.shen (loaded by the caller). *\
 (define urdr.scenario.abstract.observations-value
   -> [list [(urdr.scenario.abstract.observation-record)]])
 
+\\ Pattern per shen/properties/properties.shen section 3: an `ack` fact
+\\ recorded by the client component, any value.
+(define urdr.scenario.abstract.pattern-value
+  ->
+    [record
+      [[(urdr.scenario.abstract.k "name")
+        (urdr.scenario.abstract.s "ack")]
+       [(urdr.scenario.abstract.k "source")
+        (urdr.scenario.abstract.s "client")]
+       [(urdr.scenario.abstract.k "value")
+        [null]]]])
+
 (define urdr.scenario.abstract.spec-value
   ->
     [record
       [[(urdr.scenario.abstract.k "deadline")
         (urdr.scenario.abstract.big 8)]
        [(urdr.scenario.abstract.k "pattern")
-        (urdr.scenario.abstract.s "ack")]]])
+        (urdr.scenario.abstract.pattern-value)]]])
 
 (define urdr.scenario.abstract.property-record
   ->

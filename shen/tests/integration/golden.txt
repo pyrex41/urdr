@@ -1,4 +1,4 @@
-DEMO|0|scenario|valid|eb91fed0928a5b858e444912bdb470cc489381bbf201de71ae021615cda27c2c
+DEMO|0|scenario|valid|1b2fa9c21eb9e898780ebfd2dd3757d40cfcd9f34c20f9ae158df4f3f0952424
 DEMO|1|explore|found|cf1f3ecb98e5fa293405374cc7245deeb0deb19e772cd81f6aabff0842cecfd0|inject=true
 DEMO|2|shrink|before=14|after=1|persist=true
 DEMO|3|replay|ok|root=db65fba69941a791db933abd0adfa6ca3b657060377210e1cb2314ac7cce118d|fail=true
