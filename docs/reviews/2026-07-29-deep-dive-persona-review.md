@@ -552,6 +552,84 @@ is a completion problem, not a rescue.
 
 ---
 
+### 7.5 Experimental track — "Skuld": an LLM advisor over the run loop
+
+Status: penciled in, explicitly experimental, and explicitly **not** core to
+making the framework work — it is gated on the Phase 1 exit demonstration and
+must be removable without touching anything above this section. (Skuld, the
+Norn of what-is-to-come, follows the Bifrost/Ratatoskr/Urdr naming lineage
+and describes the job: choosing future schedules.)
+
+**Idea.** A small control "brain" LLM participates in the testing process: it
+starts from a structured map of the system under test and the coverage state,
+and responds to unexpected findings dynamically — tightening fault timing
+around a suspicious anomaly, generating scenario variants, explaining a
+shrunk failing artifact.
+
+**Why Urdr is unusually well-shaped for this.** Both boundaries the brain
+would cross already exist and are already fail-closed:
+
+- *Input side:* an LLM is a nondeterministic external service, and the
+  architecture already defines how those participate — record/replay
+  (SPEC §13), the `recorded` entropy-firewall class, content-addressed
+  transcripts hashed into run identity. Every model interaction is recorded;
+  replay of any brain-influenced run works with the network unplugged.
+- *Output side:* everything the brain produces — scenario frames, fault
+  schedules, strategy weight tables — is validated canonical data with
+  stable rejection codes. Hallucinated configuration fails closed with a
+  machine-readable error the brain can react to. The DSL's strictness is
+  what makes an untrusted generator safe to attach.
+
+**Three seats, in ascending order of risk:**
+
+- **Seat A — outer-loop orchestrator (between runs). Recommended start.**
+  The brain reads certificates, verdicts, vacuity markers, witness records,
+  shrunk artifacts, and the coverage map; decides what to try next; emits
+  new scenario frames and seeds through the same front-end and validator a
+  human uses. It never touches world semantics; every individual run remains
+  fully deterministic and certified. This automates the human operator loop
+  (run → inspect anomaly → hypothesize → design next fault schedule).
+- **Seat B — strategy advisor (within a run), policy-as-data only.** The
+  brain periodically emits a *policy value* — a strategy weight table or
+  bias program in the existing grammar — which the deterministic search then
+  executes. Never an API call per choice (latency and determinism both
+  forbid it). Its emissions are recorded; replay uses pinned selections
+  (Phase 1 item 4) and never needs the model. Requires Phase 1 complete.
+- **Seat C — verdict/oracle participation. Never.** Verdicts, failure
+  signatures, and the shrink acceptance gate stay deterministic. An LLM
+  grading pass/fail would give the shrinker a flaky oracle — it would chase
+  noise and accept candidates that fail *differently*, corrupting everything
+  downstream of the failure signature. This is a category error, not a risk
+  to manage.
+
+**Guardrails (all mandatory):**
+
+1. Flag-gated; zero new dependencies in the core. The brain is a separate
+   process consuming the same artifacts and CLI a human does; `urdr run`
+   never grows a network client.
+2. Sequenced after the Phase 1 exit demo — a brain steering a framework that
+   cannot run end-to-end steers nothing.
+3. Full audit chain: what the brain read, what it emitted, which validated
+   frame resulted — as content-addressed advisor-transcript artifacts, model
+   version pinned. "The model decided to" is not a log line.
+4. A permanent unguided seeded-random control arm, with measured lift:
+   distinct bugs found per N evaluations, brain vs. random vs. boundary
+   strategy, same budget. LLMs are plausibility machines and bugs live in
+   implausible interleavings; if the brain does not beat random, it is
+   theater — and only the control arm will reveal that.
+5. The **coverage/surprise map is a first-class artifact independent of the
+   LLM** — what was tested, what was expected, what deviated (vacuous passes
+   are already machine-visible and are exactly this kind of signal). M6's
+   coverage-guided search needs the same map; the brain is one consumer of
+   it, not its owner.
+
+**Cheapest first deliverable:** the brain reads a shrunk failing artifact and
+produces (a) a human-readable explanation and (b) the next three scenario
+variants as validated frames. Most of the operator value, none of the
+in-run risk.
+
+---
+
 ## 8. Immediate punch list (independent of the roadmap)
 
 Small, high-value, mostly one-file:
