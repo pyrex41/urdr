@@ -7,7 +7,22 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 cd "$ROOT"
 
-DEPS=$ROOT/.cache/urdr/dependencies
+# Launcher paths default to the pinned checkouts under
+# .cache/urdr/dependencies; URDR_DEPENDENCIES overrides the whole tree,
+# matching scripts/build-ports. In a linked worktree the dependency cache
+# lives beside the main checkout, so fall back to the common git
+# directory's parent.
+DEPS=${URDR_DEPENDENCIES:-}
+if [ -z "$DEPS" ]; then
+  DEPS=$ROOT/.cache/urdr/dependencies
+  if [ ! -d "$DEPS" ]; then
+    common=$(git -C "$ROOT" rev-parse --path-format=absolute \
+      --git-common-dir 2>/dev/null || true)
+    if [ -n "$common" ]; then
+      DEPS=$(dirname -- "$common")/.cache/urdr/dependencies
+    fi
+  fi
+fi
 CL=${SHEN_CL:-$DEPS/shen-cl/bin/sbcl/shen}
 GO=${SHEN_GO:-$DEPS/shen-go/.bin/shen-go}
 RUST=${SHEN_RUST:-$DEPS/shen-rust/target/release/shen-rust}
