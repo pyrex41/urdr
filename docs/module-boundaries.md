@@ -37,6 +37,7 @@ must never directly order world events.
 | `shen/scenario/` | Scenario declarations and validation | Adapter effects |
 | `shen/properties/` | Deterministic property verdicts | Host log interpretation |
 | `shen/search/`, `shen/shrink/` | Explicit choices, replayable search and minimization | Ambient randomness |
+| `shen/run/` | Scenario execution driver: composes validated scenarios, worlds, properties, and search into one certified run (ADR 0007 D1) | New semantic authority, printing, host I/O |
 | `shen/protocol/` | Portable UAP values and validation | Transport I/O |
 | `protocol/` | Versioned byte-level UAP contract and fixtures | Simulation policy |
 | `adapters/` | Effect execution and fact reporting | Time, ordering, random, profile, or certification decisions |
@@ -50,6 +51,24 @@ must never directly order world events.
 Tests live with, or in the declared test root for, the module whose contract
 they exercise. Cross-module fixtures belong in `protocol/fixtures/` only when
 they are part of the public byte contract.
+
+`shen/run/` sits at the top of the Shen dependency graph: it may depend on
+`shen/scenario/`, `shen/world/` (including `shen/world/models/`),
+`shen/properties/`, `shen/search/`, and `shen/protocol/`, and nothing may
+depend on `shen/run/`. `shen/run/models/` holds reference models for
+declared scenarios (for example `partition-retry`): executable handler
+tables that `urdr.run.execute` consumes. They are driver material, not
+kernel material — `shen/world/models/` stays reserved for the built-in
+component kinds every scenario may bind, and `scenarios/` stays
+declarations-only (a scenario file constructs a canonical value; it may
+not carry handlers). (`shen/shrink/` joins the permitted set with the
+shrink-integration wave; it is unused today and unlisted so an accidental
+edge is a boundary violation, not a dormant permission.) The driver, ADR
+0007 D1's single production path, composes authorities that
+already exist — it validates through the scenario module, reduces through the
+world kernel, evaluates through the property engine, selects through the
+search strategies, and certifies through the certificate builder — and owns
+no semantic decision those modules do not already own.
 
 ## Boundary rules
 

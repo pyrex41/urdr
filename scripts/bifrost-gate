@@ -36,6 +36,7 @@ CASE_ORDER = (
     "explore-shrink",
     "scenario-grammar",
     "m1-integration",
+    "run-driver",
 )
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -47,8 +48,8 @@ EXPECTED_PINS = {
     "bifrost": "b0e2baa067c5f6e2047f077d531200bfc02bfa0f",
     "ratatoskr": "56d67c7a603e28e25f3a8dc4774f08741e98f1ce",
     "shen-go": "e3517b06ea331bf889de841fff0d51aeb3db479e",
-    "shen-lua": "9f6fb35d8c955bf303a55ef354e50ea18123c0bb",
-    "shen-cl": "dc3b599c440a94cb717e01f8c7ef674c5ff5f988",
+    "shen-lua": "4e3b43a9eb2e3529f300c08c593abd8b00908ac2",
+    "shen-cl": "e48776dfc0da2928f0b9828b942d678648e408e0",
     "shen-rust": "0f5408acf50715d7d76093dbc8705b0dc986c9a9",
     "shenscript": "35b8269f75afbac9939ac0e8c7838cc4bf00d448",
 }
@@ -72,42 +73,42 @@ EXPECTED_CASES = {
         "name": "named-prng",
         "mode": "script",
         "program": "shen/tests/prng/run-tests.shen",
-        "program_sha256": "c65cdce431ecaf9aed26a437a20efbfa78ae2541bdfb574cbcfd28393bc31b7b",
+        "program_sha256": "e1b1e632a304223269848c7f1dce6eb9f469864eefb88eaa324c184302667885",
         "expect": "marker",
         "marker": "ALL PASS",
         "heavy": True,
         "fixture_manifest": "protocol/fixtures/v1/prng/SHA256SUMS",
         "fixture_manifest_sha256": "aa3276def93fb855593d38ec2551ecce58a6726d9a1d6cfbb73ff2a37f0463b8",
         "raw_golden_path": None,
-        "raw_golden_sha256": "25eaee92370a65103a86fec7f42151fbc85ddfbbe7f69624de6220bfe7244a07",
+        "raw_golden_sha256": "8cfcb95b34d508924311e21280107b598ec4c8e3a323853b61f7c37d9a9fcd7b",
         "doc": "Portable integers, SHA-256, named streams, sampling, and vectors",
     },
     "world-reducer": {
         "name": "world-reducer",
         "mode": "script",
         "program": "shen/tests/world/run-tests.shen",
-        "program_sha256": "886b121fae21c7463a1bc70efc778ec44e837f65ac7ab2939303421156383eba",
+        "program_sha256": "1d0a556b35df7e78f75ea4ab049622bea16bc8c2b88125c8932ef1e928a5ff8c",
         "expect": "marker",
         "marker": "ALL PASS",
         "heavy": True,
         "fixture_manifest": None,
         "fixture_manifest_sha256": None,
         "raw_golden_path": "shen/tests/world/golden.txt",
-        "raw_golden_sha256": "9f8b8127c76c817b4d555abc786c7a97ff28d6e36ca819b62ebef1b2f20dccf3",
+        "raw_golden_sha256": "07136f4886798df7d66cdfafdd4d77984ce9a56bcd7ceecdaa99a7db93cc3f0a",
         "doc": "World reduction, event ordering, replay, named streams, and trace",
     },
     "scenario-parse": {
         "name": "scenario-parse",
         "mode": "script",
         "program": "shen/tests/scenario/run-tests.shen",
-        "program_sha256": "3adfcf47bebf534ef3780b94d12f2fb4af1cc8f1582ba20f79fb2f582cbfe061",
+        "program_sha256": "0b77218d8951add1968102f62c16b7c35530bf761c07c11dd6b5ee68647fafae",
         "expect": "marker",
         "marker": "ALL PASS",
         "heavy": True,
         "fixture_manifest": "protocol/fixtures/v1/scenario/SHA256SUMS",
-        "fixture_manifest_sha256": "502e576ddbfc9f86ee8cf17723b9bf0d9fe5a692bc3607efca3520ade9cdc0ca",
+        "fixture_manifest_sha256": "92d026439784b378d1895ea950d0cfb21ffa5735e2d5a974b7d4fde5b861089d",
         "raw_golden_path": None,
-        "raw_golden_sha256": "fdea628a7c6b610864615386679d5898f88333aee13186089325042de4d350e6",
+        "raw_golden_sha256": "987d8aa830b1d5bacfa8b20d81ea57c677c32832a120d82138038fcc375e5f5b",
         "doc": "Scenario DSL parse, validation, profiles, and fixture rejection",
     },
     "netkat-core": {
@@ -142,21 +143,21 @@ EXPECTED_CASES = {
         "name": "models-conformance",
         "mode": "script",
         "program": "shen/tests/models/run-tests.shen",
-        "program_sha256": "5da75c02e02fe8b84a6d0fcaf99b30dab5a55b9227f8ee4ecb82a0df744ea4eb",
+        "program_sha256": "744a442fdfe6dcaf8b0534478c6b7ac5ce509fc5c0ac481d88dd6646d626bddd",
         "expect": "marker",
         "marker": "ALL PASS",
         "heavy": True,
         "fixture_manifest": None,
         "fixture_manifest_sha256": None,
         "raw_golden_path": "shen/tests/models/golden.txt",
-        "raw_golden_sha256": "f3f7ae5b47c8eb26ae71ec21ba5eaafe43b800be6025f98b0f65231f08d56f9b",
+        "raw_golden_sha256": "2e2c9f89a5d2f9f436695c1d83d908950988c68f8530f96dc9e2268431d19aeb",
         "doc": "Net, timer, and fault components plus the NetKAT witness bridge",
     },
     "property-verdicts": {
         "name": "property-verdicts",
         "mode": "script",
         "program": "shen/tests/properties/run-tests.shen",
-        "program_sha256": "28526116736059d2c9cc10d5fa683427de167c9c1910775e01ace2ebf32a2999",
+        "program_sha256": "07293af66731d7983715722788afcc25d025da9322d8a80e29e4c17dab885dbd",
         "expect": "marker",
         "marker": "ALL PASS",
         "heavy": True,
@@ -170,57 +171,71 @@ EXPECTED_CASES = {
         "name": "replay-certificate",
         "mode": "script",
         "program": "shen/tests/replay/run-tests.shen",
-        "program_sha256": "817c69a20e9e8bab064dbd0e41dd67fd3e30e436ed0112f5eb4797aa615c9e2a",
+        "program_sha256": "70b2319514b9feec53876456853ff95c0a72e04f5dc194151aad36733351d2cd",
         "expect": "marker",
         "marker": "ALL PASS",
         "heavy": True,
         "fixture_manifest": None,
         "fixture_manifest_sha256": None,
         "raw_golden_path": "shen/tests/replay/golden.txt",
-        "raw_golden_sha256": "046595da6c92a60bc2620fc3de8243e927ef07f64a7dbfe0897e6324542d6cba",
+        "raw_golden_sha256": "c68014e8757c853d972a4f03af8879820c6223adb5e3d5057f3189d4ac0a5829",
         "doc": "Event records, transcript replay, certificates, and run identity",
     },
     "explore-shrink": {
         "name": "explore-shrink",
         "mode": "script",
         "program": "shen/tests/search/run-tests.shen",
-        "program_sha256": "563bf632a759f00b56e13382325c0fc1680424d3dba3ddb830e486b5719c9b86",
+        "program_sha256": "482e4222e50ca38e77916b9a0ed1e7acc116da2b89de210c48d84603f2c4e360",
         "expect": "marker",
         "marker": "ALL PASS",
         "heavy": True,
         "fixture_manifest": None,
         "fixture_manifest_sha256": None,
         "raw_golden_path": "shen/tests/search/golden.txt",
-        "raw_golden_sha256": "f724cb47f60856595a3e7683b68c7977cf2682d5661311b1605ac936d0ff6bed",
+        "raw_golden_sha256": "323a03468b2678170720c3206184593b87b582dc83965eb6df4787323f9e6ed1",
         "doc": "Seeded exploration strategies, shrink persistence, and path digests",
     },
     "scenario-grammar": {
         "name": "scenario-grammar",
         "mode": "script",
         "program": "shen/tests/search/grammar/run-tests.shen",
-        "program_sha256": "6f306ab58a12bce05807f446af3c5ec97333b19a1eb37596894fab38b3c6b15b",
+        "program_sha256": "528c907b65c396916c54d2bc969a526eea6eda25afe04be9a59adbd95260736e",
         "expect": "marker",
         "marker": "ALL PASS",
         "heavy": True,
         "fixture_manifest": None,
         "fixture_manifest_sha256": None,
         "raw_golden_path": "shen/tests/search/grammar/golden.txt",
-        "raw_golden_sha256": "702eb0c7cca69a2fc85683d2266410a493228a5ba1de4b3f014ebf1166bbbc02",
+        "raw_golden_sha256": "3fbcb3df5b205087867152c9ce4664c7a8426eb15277f0b17ae3a6ea49992703",
         "doc": "Seeded generative grammar for scenario families",
     },
     "m1-integration": {
         "name": "m1-integration",
         "mode": "script",
         "program": "shen/tests/integration/run-tests.shen",
-        "program_sha256": "fdbded7ec838bbf1f4b37a8773ba6e63146499fc6932b749af7528285adfa94e",
+        "program_sha256": "817ced256e1dba909fcba7ad55c62160b04067e8ceb34b56d33cf70b095b4536",
         "expect": "marker",
         "marker": "ALL PASS",
         "heavy": True,
         "fixture_manifest": None,
         "fixture_manifest_sha256": None,
         "raw_golden_path": "shen/tests/integration/golden.txt",
-        "raw_golden_sha256": "e73c5a5281e73a60480a74a6d969fc7efd82ff8dcc7eccf032412f73134b2d66",
+        "raw_golden_sha256": "cf808bfc9cf10babf68da390db2fe18d55c59f124762dc942d4a233a0386fb0e",
         "doc": "M1 abstract-world exit demonstration (partition-retry)",
+    },
+    "run-driver": {
+        "name": "run-driver",
+        "mode": "script",
+        "program": "shen/tests/run/run-tests.shen",
+        "program_sha256": "37d8c27cc38f1707201355f82fd5c36bd0df4e3e6627edcf3610c4177fe6f910",
+        "expect": "marker",
+        "marker": "ALL PASS",
+        "heavy": True,
+        "fixture_manifest": None,
+        "fixture_manifest_sha256": None,
+        "raw_golden_path": "shen/tests/run/golden.txt",
+        "raw_golden_sha256": "e2058057088834f938f7ca6ae3816278522e437ffec1c921c1db4085cfbd210b",
+        "doc": "Scenario driver: step loop, budgets, discovery, and determinism",
     },
 }
 
@@ -706,6 +721,7 @@ def semantic_projection(case_name: str, raw: bytes) -> bytes:
         "canonical-values": (b"valid|", b"reject|", b"FAIL|"),
         "named-prng": (b"PASS ", b"FAIL ", b"urdr-prng:"),
         "world-reducer": (
+            b"WORLD-CHOICE-DRAWN ", b"WORLD-CHOICE-SELECTED ",
             b"WORLD-TRACE ", b"WORLD-COMPONENT-TRACE ", b"WORLD TESTS:",
             b"WORLD TRACE:"),
         "scenario-parse": (
@@ -736,6 +752,8 @@ def semantic_projection(case_name: str, raw: bytes) -> bytes:
             b"SEED|", b"MUT|", b"REPLAY|", b"FAIL|", b"GRAMMAR CASES: "),
         "m1-integration": (
             b"DEMO|", b"FAIL|", b"INTEGRATION CASES: "),
+        "run-driver": (
+            b"RUN|", b"FAIL|", b"RUN CASES: "),
     }[case_name]
     lines = [
         line
@@ -760,7 +778,12 @@ def validate_output_shape(case_name: str, semantic: bytes) -> None:
         for line in lines[:-1]:
             if line == "REPLAY: FAIL" or line.startswith("FAIL|"):
                 raise GateFailure(f"{case_name} raw output contains failure")
-    elif case_name in ("explore-shrink", "scenario-grammar", "m1-integration"):
+    elif case_name in (
+        "explore-shrink",
+        "scenario-grammar",
+        "m1-integration",
+        "run-driver",
+    ):
         for line in lines[:-1]:
             if line.startswith("FAIL|"):
                 raise GateFailure(f"{case_name} raw output contains failure")
@@ -787,11 +810,17 @@ def validate_output_shape(case_name: str, semantic: bytes) -> None:
         if len(passes) != count or len(lines) != count + 2:
             raise GateFailure("PRNG raw output test count changed")
     elif case_name == "world-reducer":
+        # The two choice digests pin the ADR 0007 D2 round-trip theorem:
+        # a drawn choice and its pinned (selected-form) replay emit the
+        # same record, so the digests must be equal, not merely present.
         if (
-            len(lines) != 4
-            or not re.fullmatch(r"WORLD-TRACE [0-9a-f]+", lines[0])
-            or not re.fullmatch(r"WORLD-COMPONENT-TRACE [0-9a-f]+", lines[1])
-            or lines[2] != "WORLD TESTS: 21/21 PASS"
+            len(lines) != 6
+            or not re.fullmatch(r"WORLD-CHOICE-DRAWN [0-9a-f]+", lines[0])
+            or not re.fullmatch(r"WORLD-CHOICE-SELECTED [0-9a-f]+", lines[1])
+            or lines[0].split(" ")[1] != lines[1].split(" ")[1]
+            or not re.fullmatch(r"WORLD-TRACE [0-9a-f]+", lines[2])
+            or not re.fullmatch(r"WORLD-COMPONENT-TRACE [0-9a-f]+", lines[3])
+            or lines[4] != "WORLD TESTS: 26/26 PASS"
         ):
             raise GateFailure("world raw output or lowercase trace changed")
 

@@ -55,6 +55,20 @@ X|component-unknown-node|invalid/component-unknown-node.frame|scenario-unknown-n
 X|duplicate-component|invalid/duplicate-component.frame|scenario-duplicate-component
 X|component-order|invalid/component-order.frame|scenario-component-order
 X|component-kind-type|invalid/component-kind-type.frame|scenario-component-kind-type
+# ADR 0007 D3: the optional per-component `model` binding. Presence
+# selects the expected key list, so absence stays legal; a non-symbol
+# model fails with its own scenario code, while a duplicated or
+# misplaced model key never reaches the scenario layer because the
+# canonical decoder rejects the record first (ADR 0002 codes). A model
+# bound on a non-`process` kind is rejected with its own code: the
+# registry dispatches on model presence before it consults the kind,
+# so only this validation door keeps a bound net/timer/fault entry
+# from silently building as that model's process.
+V|component-model|valid/component-model.frame
+X|component-model-type|invalid/component-model-type.frame|scenario-component-model-type
+X|component-model-duplicate|invalid/component-model-duplicate.frame|record-duplicate
+X|component-model-misplaced|invalid/component-model-misplaced.frame|record-order
+X|component-model-kind|invalid/component-model-kind.frame|scenario-component-model-kind
 X|faults-type|invalid/faults-type.frame|scenario-faults-type
 X|fault-kind-unsupported|invalid/fault-kind-unsupported.frame|scenario-fault-kind-unsupported
 X|fault-kinds-empty|invalid/fault-kinds-empty.frame|scenario-fault-kinds-empty
@@ -75,6 +89,20 @@ X|property-class-unsupported|invalid/property-class-unsupported.frame|scenario-p
 X|property-class-type|invalid/property-class-type.frame|scenario-property-class-type
 X|duplicate-property|invalid/duplicate-property.frame|scenario-duplicate-property
 X|property-order|invalid/property-order.frame|scenario-property-order
+# ADR 0007 D4: the optional `routes` field. Presence selects the
+# expected key list, so absence stays legal; the valid fixture routes to
+# both a component target and a node target. A target that is neither a
+# component symbol nor a [record [[node SYMBOL]]] is a shape error; an
+# undeclared from-component, target component, or target node is
+# unknown; a fact naming one of the nine reserved authorities is
+# rejected so a declaration cannot launder a kernel authority through
+# the router.
+V|routes|valid/routes.frame
+X|route-shape|invalid/route-shape.frame|scenario-route-shape
+X|route-unknown-from|invalid/route-unknown-from.frame|scenario-route-unknown-from
+X|route-unknown-target|invalid/route-unknown-target.frame|scenario-route-unknown-target
+X|route-unknown-node|invalid/route-unknown-node.frame|scenario-route-unknown-target
+X|route-reserved-fact|invalid/route-reserved-fact.frame|scenario-route-reserved-fact
 # ADR 0005 canonical-profile/m1-large boundary fixtures. scenario/v1 names
 # that profile statically; each frame below is a genuine scenario/v1 frame
 # whose boundary payload lives in one property's opaque spec value.

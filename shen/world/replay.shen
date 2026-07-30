@@ -39,6 +39,13 @@
 \\ urdr.eventlog.payload-value / payload-of, so the writer and the event
 \\ log cannot drift apart.
 \\
+\\ A choice-input payload carries either the drawn form (menu only: the
+\\ world re-draws on reduce) or the selected form (ADR 0007 D2: menu
+\\ plus the selected alternative and the PRNG coordinates that produced
+\\ it, so the transcript -- not the PRNG -- is the replay authority).
+\\ The selected and coordinates keys are additive: menu-only entries
+\\ written before the selected form existed read back unchanged.
+\\
 \\ urdr.replay.write is a total inverse of urdr.replay.read on every
 \\ transcript the reducer can produce. A written entry that does not read
 \\ back is replay-entry-shape, never a silent repair.
@@ -97,10 +104,23 @@
 \\                            with the expected and actual record digests
 \\   replay-state-divergence  every event agreed but the final state
 \\                            roots differ
+\\   replay-selection-divergence  the re-drive refused a recorded
+\\                            selection: the world rejected a selected
+\\                            choice entry as not a member of its menu
+\\                            (choice-selection-not-member)
 \\
 \\ A reduction that fails during the re-drive surfaces the event log's
 \\ own code (eventlog-reduction-error and friends) unchanged, because the
-\\ run did not diverge -- it did not happen.
+\\ run did not diverge -- it did not happen. The one exception is a
+\\ choice-selection-not-member refusal (ADR 0007 D2): the transcript
+\\ already matched the recorded entry digests, so the artifact is the
+\\ recorded one, and a recorded selection the engine's own membership
+\\ door now refuses is not "the run did not happen" -- it is the engine
+\\ and the artifact disagreeing about what was decided, the same species
+\\ of evidence as a differing event digest. It is therefore classified
+\\ replay-selection-divergence and joins the DIVERGED family in
+\\ certificate.shen's replay-code partition; the world's error record
+\\ travels as the detail so the refused selection stays attributable.
 \\
 \\ =====================================================================
 \\ 4. Public entry points
@@ -212,6 +232,9 @@
   c-state-divergence ->
     [114 101 112 108 97 121 45 115 116 97 116 101 45 100 105 118
      101 114 103 101 110 99 101]
+  c-selection-divergence ->
+    [114 101 112 108 97 121 45 115 101 108 101 99 116 105 111 110
+     45 100 105 118 101 114 103 101 110 99 101]
   c-recorded-shape ->
     [114 101 112 108 97 121 45 114 101 99 111 114 100 101 100 45
      115 104 97 112 101]
@@ -235,6 +258,8 @@
   replay-event-count -> (urdr.replay.n c-event-count)
   replay-event-divergence -> (urdr.replay.n c-event-divergence)
   replay-state-divergence -> (urdr.replay.n c-state-divergence)
+  replay-selection-divergence ->
+    (urdr.replay.n c-selection-divergence)
   replay-recorded-shape -> (urdr.replay.n c-recorded-shape)
   _ -> (urdr.replay.n c-unmapped))
 
@@ -553,8 +578,31 @@
   [error Code Detail] _ _ _ _ _ -> [error Code Detail]
   [ok] Initial Transcript EventDigests EventRoot StateRoot ->
     (urdr.replay.verify-run
-      (urdr.eventlog.of-run Initial Transcript)
+      (urdr.replay.classify-redrive
+        (urdr.eventlog.of-run Initial Transcript))
       EventDigests EventRoot StateRoot))
+
+\\ Section 3: only reached AFTER the transcript matched the recorded
+\\ entry digests, so a re-drive refusal of a recorded selection is
+\\ engine/artifact disagreement (DIVERGED family), not a run that never
+\\ happened. The stable world code is matched by its octet name so this
+\\ classification cannot drift from the reducer's own vocabulary; every
+\\ other reduction error passes through unchanged, and the recorder path
+\\ (urdr.replay.run) is deliberately NOT classified -- while recording
+\\ there is no artifact to disagree with yet.
+(define urdr.replay.selection-code-octets
+  -> [99 104 111 105 99 101 45 115 101 108 101 99 116 105 111 110
+      45 110 111 116 45 109 101 109 98 101 114])
+
+(define urdr.replay.classify-redrive
+  [error eventlog-reduction-error
+    [record [[[99 111 100 101] [symbol Code]] | Fields]]] ->
+    (if (= Code (urdr.replay.selection-code-octets))
+        [error replay-selection-divergence
+          [record [[[99 111 100 101] [symbol Code]] | Fields]]]
+        [error eventlog-reduction-error
+          [record [[[99 111 100 101] [symbol Code]] | Fields]]])
+  Result -> Result)
 
 (define urdr.replay.verify-run
   [error Code Detail] _ _ _ -> [error Code Detail]

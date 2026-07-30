@@ -983,9 +983,10 @@
       [step Next [[fact (upt.tick-name) Next]] []]))
 
 (define upt.registry
-  -> [[component [99 111 117 110 116 101 114]
-                 (/. S E (upt.counter-handler S E))
-                 (urdr.int.zero)]])
+  -> [(urdr.component.entry
+        [99 111 117 110 116 101 114]
+        (/. S E (upt.counter-handler S E))
+        (urdr.int.zero))])
 
 (define upt.world-inputs
   -> [[schedule (upt.big 2) component

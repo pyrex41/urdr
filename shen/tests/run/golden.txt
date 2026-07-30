@@ -1,0 +1,14 @@
+RUN|quiescent|exhausted|attempts=2|distinct=1|errors=0|sig=8b87a1362842da6fbd302abb5e4065dba4eb3efa7b6ff36fbec2967b6cf8ba51
+RUN|discovery|attempt=1|sig=f8690c06f76d961abc1e61c450eeee11365a0b2aa6d1f5a64e15651eee4db41e
+RUN|verdict|ack-on-time|FAIL|no-witness
+RUN|certificate|status=FAIL|profile=modeled-d1-analog
+RUN|models|client:pinger@a,server:acker@b
+RUN|deterministic|match=true|root=f85367525a70afa5e333de5fa56a566e9c67ead942e1229f37f5e6da9901232b
+RUN|seed-divergence|differs=true
+RUN|steps|run-all-attempts-failed|attempts=2|codes=run-steps-exceeded,run-steps-exceeded
+RUN|cascade|run-all-attempts-failed|attempts=2|codes=route-cascade-exceeded,route-cascade-exceeded
+RUN|events|run-all-attempts-failed|attempts=2|codes=run-events-exceeded,run-events-exceeded
+RUN|reject-property|rejected|properties-liveness-spec-shape
+RUN|reject-model|rejected|registry-unknown-model
+RUN CASES: 9
+ALL PASS

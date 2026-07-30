@@ -13,6 +13,10 @@ PYTHONDONTWRITEBYTECODE=1 shen/tests/adversarial/run
 PYTHONDONTWRITEBYTECODE=1 shen/tests/adversarial/run --probe-ports
 ```
 
+The offline test suite also runs as part of `make test` (and therefore
+`make quality` and `make ci`) via a second unittest discovery root;
+`make adversarial` runs it together with the launcher probes.
+
 The first command uses only Python's standard library (plus the production
 ADR 0002 netstring codec for framing/scenario frame decode) and covers:
 
@@ -59,9 +63,11 @@ ADR 0002 netstring codec for framing/scenario frame decode) and covers:
 
 `--probe-ports` additionally executes read-only version queries against
 shen-go, shen-cl, and shen-rust, plus `(+ 1 1)` against shen-lua (whose
-launcher has no version option). Environment variables
-`URDR_SHEN_GO`, `URDR_SHEN_LUA`, `URDR_SHEN_CL`, and `URDR_SHEN_RUST` override
-their paths. These are read-only availability probes, not semantic agreement.
+launcher has no version option). Launchers default to the pinned checkouts
+under `.cache/urdr/dependencies` (see `scripts/build-ports`);
+`URDR_DEPENDENCIES` overrides that tree, and `URDR_SHEN_GO`,
+`URDR_SHEN_LUA`, `URDR_SHEN_CL`, and `URDR_SHEN_RUST` override individual
+paths. These are read-only availability probes, not semantic agreement.
 
 ## Production seams
 

@@ -28,7 +28,7 @@ State
   QUEUE [record [[items [list PACKET ...]] [via VIA]]]
   VIA   [record [[from [symbol NODE]] [to [symbol NODE]]]]
 
-No key and no symbol value above is one of the eight authorities reserved
+No key and no symbol value above is one of the nine authorities reserved
 to the world kernel, so the component-interface scan accepts the state.
 Logical time never appears: the queue is ordered by arrival, not by a
 timestamp the model would have had to invent.
