@@ -64,11 +64,11 @@ determinism claims as the greatest product risk; §25 criterion 14 requires
 that a deliberately unsupported entropy source produce UNCERTIFIED. That
 criterion is currently protected by a function with one reachable answer.
 
-This plan closes both. It borrows its shape from
-`downstream-model-harness/docs/design/PLAN.md`, which solved the same
-credibility problem for a live production target and whose two organising
-devices — a rung ladder you must state rather than oversell, and per-phase
-kill criteria — are what M1 lacked.
+This plan closes both. It borrows its shape from a downstream consumer's
+design plan, which solved the same credibility problem for a live
+production target and whose two organising devices — a rung ladder you
+must state rather than oversell, and per-phase kill criteria — are what
+M1 lacked.
 
 ## 1. Design stance
 
@@ -211,9 +211,9 @@ than building an adapter.
 **Kill criterion — this is the real gate.** Run the closed loop with no
 fault injected and measure how often a property fails. If the false-positive
 rate is not near zero, stop: fault injection on a noisy oracle does not find
-bugs, it finds nothing, loudly. This is the lesson `downstream-model-harness`'s PLAN §0 paid
-for — downstream-behavior-spec's delta-presence oracle sat at a 77% noise floor on
-unperturbed traffic, and their conclusion, *"the floor is the project,"*
+bugs, it finds nothing, loudly. This is a lesson a downstream consumer paid
+for — an earlier delta-presence oracle sat at a 77% noise floor on
+unperturbed traffic, and the conclusion, *"the floor is the project,"*
 applies here before any exploration work is worth doing.
 
 ## 7. P4 — Wire the evidence that already exists (1 week)
@@ -233,9 +233,9 @@ Cheap, and disproportionate to its cost.
    (`pkg/audit/proof.go:36`), and it is the structural fix for the fail-open
    class that produced four separate silent greens here.
 3. Mechanize the known-divergence registry. ADR 0006 lists two open port
-   defects by hand. Following `downstream-model-harness` PLAN §3.2, make them data, where a
-   known divergence that *stops* reproducing also reddens the gate — a
-   silently-fixed divergence is as much a change as a new one.
+   defects by hand. Following the downstream registry precedent, make them
+   data, where a known divergence that *stops* reproducing also reddens the
+   gate — a silently-fixed divergence is as much a change as a new one.
 
 ## 8. Kill criteria for M2 as a whole
 
