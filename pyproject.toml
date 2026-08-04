@@ -1,0 +1,27 @@
+# Packaging for the UAP reference implementation only; the rest of the
+# repository is not distributed.
+#
+# The import package `urdr_uap` maps onto the existing in-repo directory
+# `adapters/common/uap` without moving files, so the same sources carry two
+# import identities: `adapters.common.uap` when used in-repo via sys.path,
+# and `urdr_uap` when installed from this distribution. That is intentional.
+# The real compatibility contract between producers and consumers is
+# `CanonicalCodec.name == b"urdr-rfc9804-v1"`, not the Python import path.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "urdr-uap"
+version = "0.1.0"
+description = "Urdr Adapter Protocol (UAP) M0 reference implementation — canonical values, netstring framing, effect endpoint."
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = []
+
+[tool.setuptools]
+packages = ["urdr_uap"]
+
+[tool.setuptools.package-dir]
+urdr_uap = "adapters/common/uap"

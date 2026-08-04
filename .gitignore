@@ -8,6 +8,7 @@
 
 # Python/tool caches
 __pycache__/
+*.egg-info/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
@@ -26,6 +27,9 @@ venv/
 .cache/
 build/downloads/
 build/out/
+# setuptools wheel-build staging for the urdr-uap package (build/locks/ stays
+# tracked; never ignore build/ wholesale).
+build/lib/
 dist/
 out/
 tmp/

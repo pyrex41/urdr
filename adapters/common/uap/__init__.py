@@ -31,6 +31,8 @@ from .protocol import (
 )
 from .transport import FrameDecoder, FramedServer, InProcessTransport, serve_socket
 
+__version__ = "0.1.0"
+
 __all__ = [
     "Bool",
     "CanonicalCodec",
@@ -55,6 +57,7 @@ __all__ = [
     "Text",
     "UAPError",
     "Value",
+    "__version__",
     "field",
     "integer",
     "record",
