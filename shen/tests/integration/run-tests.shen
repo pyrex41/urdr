@@ -31,28 +31,10 @@ the foreman can pin them. *\
 (define uit.quiet-load
   File -> (uit.eval-forms (read-file File)))
 
-(uit.quiet-load "shen/protocol/canonical.shen")
-(uit.quiet-load "shen/world/integer.shen")
-(uit.quiet-load "shen/world/prng.shen")
-(uit.quiet-load "shen/world/netkat.shen")
-(uit.quiet-load "shen/world/component.shen")
-(uit.quiet-load "shen/world/world.shen")
-(uit.quiet-load "shen/scenario/scenario.shen")
-(uit.quiet-load "shen/world/models/common.shen")
-(uit.quiet-load "shen/world/models/mask.shen")
-(uit.quiet-load "shen/world/models/net.shen")
-(uit.quiet-load "shen/world/models/timer.shen")
-(uit.quiet-load "shen/world/models/fault.shen")
-(uit.quiet-load "shen/world/models/registry.shen")
-(uit.quiet-load "shen/world/netpol.shen")
-(uit.quiet-load "shen/world/netkat-witness.shen")
-(uit.quiet-load "shen/properties/properties.shen")
-(uit.quiet-load "shen/world/eventlog.shen")
-(uit.quiet-load "shen/world/replay.shen")
-(uit.quiet-load "shen/world/certificate.shen")
-(uit.quiet-load "shen/search/search.shen")
-(uit.quiet-load "shen/shrink/shrink.shen")
-(uit.quiet-load "shen/run/run.shen")
+\\ Library modules come from the canonical manifest (shen/load.shen); only
+\\ the reference fixtures are lane-local. The manifest's loader carries the
+\\ urdr.load. prefix, so it cannot collide with uit. above.
+(uit.quiet-load "shen/load.shen")
 (uit.quiet-load "shen/run/models/partition-retry.shen")
 (uit.quiet-load "scenarios/abstract/partition-retry.shen")
 

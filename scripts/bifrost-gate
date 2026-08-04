@@ -213,7 +213,7 @@ EXPECTED_CASES = {
         "name": "m1-integration",
         "mode": "script",
         "program": "shen/tests/integration/run-tests.shen",
-        "program_sha256": "817ced256e1dba909fcba7ad55c62160b04067e8ceb34b56d33cf70b095b4536",
+        "program_sha256": "6111ba02219156d8b0f4cc1c54d3eed046978a2bc3f3eb77022eb74ab01b8dda",
         "expect": "marker",
         "marker": "ALL PASS",
         "heavy": True,
