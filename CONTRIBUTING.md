@@ -76,3 +76,8 @@ Use `docs/adr/0000-template.md` for decisions that change accepted design,
 portable semantics, protocol bytes, dependency policy, or certification
 requirements. ADRs are immutable historical records after acceptance; replace
 an accepted decision with a superseding ADR rather than silently rewriting it.
+
+## License
+
+By contributing to Urdr you agree that your contributions are accepted under
+the terms of the [Apache License 2.0](LICENSE).

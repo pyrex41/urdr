@@ -20,3 +20,7 @@ The authoritative design is in [SPEC.md](SPEC.md).
 - Explicit determinism certificates that fail closed on uncontrolled inputs
 
 Urdr is currently at the specification stage.
+
+## License
+
+Urdr is licensed under the [Apache License 2.0](LICENSE).
