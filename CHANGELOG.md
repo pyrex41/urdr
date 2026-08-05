@@ -14,10 +14,10 @@ First tagged release. Urdr becomes a consumable substrate:
   consuming the Shen tree as a library (cwd must be the repo root). The
   integration conformance lane loads through it, so the order is exercised
   by the four-port Bifrost gate.
-- **Zero consumer-specific content** — the downstream consumer dogfood adapter
-  (never committed here) moved to its consumer repo; plan-doc citations of
-  consumer repos were de-specialized. Downstream consumers pin this repo by
-  tag/commit and resolve it via a `URDR_ROOT` environment variable.
+- **Zero consumer-specific content** — any out-of-tree dogfood adapters
+  (never committed here) live with their consumer repos; plan-doc citations
+  of consumer repos were de-specialized. Downstream consumers pin this repo
+  by tag/commit and resolve it via a `URDR_ROOT` environment variable.
 
 State of the substrate at this tag: milestones M0–M1.5 (canonical codec,
 named PRNG streams, modeled world kernel, property/replay/shrink engine,
