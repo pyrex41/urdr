@@ -30,12 +30,14 @@ GO=${SHEN_GO:-$DEPS/shen-go/.bin/shen-go}
 RUST=${SHEN_RUST:-$DEPS/shen-rust/target/release/shen-rust}
 LUA=${SHEN_LUA:-$DEPS/shen-lua/bin/shen}
 GOLDEN=shen/tests/models/golden.txt
-CACHE=$ROOT/.shen-kernel-cache.bin
+# shen-lua writes .shen-kernel-cache.<hash>.bin (older builds wrote
+# .shen-kernel-cache.bin), so clear every variant.
+CACHE_PREFIX=$ROOT/.shen-kernel-cache
 
 SEMANTIC='^(MODELS-OK\||MODELS-DIGEST\||MODELS-REJECT\||MODELS-DIRECT\||MODELS CASES: |ALL PASS$)'
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/urdr-models.XXXXXX")
-trap 'rm -rf "$work" "$CACHE"' EXIT HUP INT TERM
+trap 'rm -rf "$work" "$CACHE_PREFIX"*.bin' EXIT HUP INT TERM
 
 ran=0
 
@@ -46,7 +48,7 @@ run_port() {
     printf '%s: SKIP launcher not built at %s\n' "$name" "$1"
     return 0
   fi
-  rm -f "$CACHE"
+  rm -f "$CACHE_PREFIX"*.bin
   if "$@" >"$work/out" 2>"$work/err" &&
      /usr/bin/grep -E "$SEMANTIC" "$work/out" >"$work/semantic" &&
      /usr/bin/cmp -s "$GOLDEN" "$work/semantic"; then

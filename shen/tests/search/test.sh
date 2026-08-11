@@ -36,7 +36,9 @@ LUA=${SHEN_LUA:-$DEPS/shen-lua/bin/shen}
 
 PROGRAM=shen/tests/search/run-tests.shen
 GOLDEN=shen/tests/search/golden.txt
-CACHE=$ROOT/.shen-kernel-cache.bin
+# shen-lua writes .shen-kernel-cache.<hash>.bin (older builds wrote
+# .shen-kernel-cache.bin), so clear every variant.
+CACHE_PREFIX=$ROOT/.shen-kernel-cache
 
 # Golden fixtures are source inputs (CONTRIBUTING.md): this script never
 # generates one. A missing golden is a hard failure, not permission to
@@ -51,7 +53,7 @@ fi
 SEMANTIC='^(CHOICE\||STRAT\||EXPLORE\||SHRINK\||MUT\||REPLAY\||SEED\||FAIL\||EXPLORE-SHRINK CASES: |EXPLORE-SHRINK: FAIL$|ALL PASS$)'
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/urdr-search.XXXXXX")
-trap 'rm -rf "$work" "$CACHE"' EXIT HUP INT TERM
+trap 'rm -rf "$work" "$CACHE_PREFIX"*.bin' EXIT HUP INT TERM
 
 SHEN_KERNEL_CACHE=off
 SHEN_FASL=off
@@ -66,7 +68,7 @@ run_port() {
     printf '%s: SKIP launcher not built at %s\n' "$name" "$1"
     return 0
   fi
-  rm -f "$CACHE"
+  rm -f "$CACHE_PREFIX"*.bin
   if "$@" >"$work/out" 2>"$work/err" &&
      /usr/bin/grep -E "$SEMANTIC" "$work/out" >"$work/semantic" &&
      /usr/bin/grep -q '^ALL PASS$' "$work/semantic"; then

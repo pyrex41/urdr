@@ -71,8 +71,10 @@ cd "$ROOT"
 
 # shen-lua and shen-cl drop a kernel cache in the working directory. Leaving it
 # behind would make scripts/check-clean-tree fail, so clear it on every exit.
-KERNEL_CACHE=$ROOT/.shen-kernel-cache.bin
-cleanup() { rm -f "$KERNEL_CACHE"; }
+# shen-lua names it per Lua build (.shen-kernel-cache.<hash>.bin; older builds
+# wrote .shen-kernel-cache.bin), so clear every variant.
+KERNEL_CACHE_PREFIX=$ROOT/.shen-kernel-cache
+cleanup() { rm -f "$KERNEL_CACHE_PREFIX"*.bin; }
 trap cleanup EXIT HUP INT TERM
 cleanup
 
