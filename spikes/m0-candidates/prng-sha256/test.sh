@@ -8,9 +8,11 @@ CL=${SHEN_CL:-/Users/reuben/projects/urdr-shen-cl-41.2/bin/sbcl/shen}
 GO=${SHEN_GO:-/Users/reuben/projects/shen-go/.bin/shen-go}
 RUST=${SHEN_RUST:-/Users/reuben/projects/shen-rust/target/release/shen-rust}
 LUA=${SHEN_LUA:-/Users/reuben/projects/shen-lua/bin/shen}
-CACHE=$ROOT/.shen-kernel-cache.bin
+# shen-lua writes .shen-kernel-cache.<hash>.bin (older builds wrote
+# .shen-kernel-cache.bin), so clear every variant.
+CACHE_PREFIX=$ROOT/.shen-kernel-cache
 
-rm -f "$CACHE"
+rm -f "$CACHE_PREFIX"*.bin
 
 python3 tests/oracle.py --check fixtures/vectors.json
 
@@ -19,7 +21,7 @@ run_port() {
   shift
   output=$(mktemp "${TMPDIR:-/tmp}/urdr-prng-sha256-output.XXXXXX")
   timing=$(mktemp "${TMPDIR:-/tmp}/urdr-prng-sha256-time.XXXXXX")
-  trap 'rm -f "$output" "$timing" "$CACHE"' EXIT HUP INT TERM
+  trap 'rm -f "$output" "$timing" "$CACHE_PREFIX"*.bin' EXIT HUP INT TERM
 
   if /usr/bin/time -p "$@" >"$output" 2>"$timing" &&
      /usr/bin/grep -q '^ALL PASS$' "$output"; then
@@ -33,7 +35,7 @@ run_port() {
     exit 1
   fi
 
-  rm -f "$output" "$timing" "$CACHE"
+  rm -f "$output" "$timing" "$CACHE_PREFIX"*.bin
   trap - EXIT HUP INT TERM
 }
 

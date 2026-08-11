@@ -25,9 +25,11 @@ CL=${SHEN_CL:-$DEPS/shen-cl/bin/sbcl/shen}
 GO=${SHEN_GO:-$DEPS/shen-go/.bin/shen-go}
 RUST=${SHEN_RUST:-$DEPS/shen-rust/target/release/shen-rust}
 LUA=${SHEN_LUA:-$DEPS/shen-lua/bin/shen}
-CACHE=$ROOT/.shen-kernel-cache.bin
+# shen-lua writes .shen-kernel-cache.<hash>.bin (older builds wrote
+# .shen-kernel-cache.bin), so clear every variant.
+CACHE_PREFIX=$ROOT/.shen-kernel-cache
 
-rm -f "$CACHE"
+rm -f "$CACHE_PREFIX"*.bin
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/tests/test_prng_vectors.py
 
 run_port() {
@@ -35,7 +37,7 @@ run_port() {
   shift
   output=$(mktemp "${TMPDIR:-/tmp}/urdr-prng-output.XXXXXX")
   timing=$(mktemp "${TMPDIR:-/tmp}/urdr-prng-time.XXXXXX")
-  trap 'rm -f "$output" "$timing" "$CACHE"' EXIT HUP INT TERM
+  trap 'rm -f "$output" "$timing" "$CACHE_PREFIX"*.bin' EXIT HUP INT TERM
 
   if /usr/bin/time -p "$@" >"$output" 2>"$timing" &&
      /usr/bin/grep -q '^ALL PASS$' "$output"; then
@@ -49,7 +51,7 @@ run_port() {
     exit 1
   fi
 
-  rm -f "$output" "$timing" "$CACHE"
+  rm -f "$output" "$timing" "$CACHE_PREFIX"*.bin
   trap - EXIT HUP INT TERM
 }
 

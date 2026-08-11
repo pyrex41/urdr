@@ -29,13 +29,15 @@ GO=${SHEN_GO:-$DEPS/shen-go/.bin/shen-go}
 RUST=${SHEN_RUST:-$DEPS/shen-rust/target/release/shen-rust}
 LUA=${SHEN_LUA:-$DEPS/shen-lua/bin/shen}
 GOLDEN=shen/tests/netpol/golden.txt
-CACHE=$ROOT/.shen-kernel-cache.bin
+# shen-lua writes .shen-kernel-cache.<hash>.bin (older builds wrote
+# .shen-kernel-cache.bin), so clear every variant.
+CACHE_PREFIX=$ROOT/.shen-kernel-cache
 
 SEMANTIC='^(NETPOL-OK\||NETPOL-TERM\||NETPOL-REJECT\||NETPOL-FLIP\||NETPOL-DIRECT\||NETPOL CASES: |NETPOL DIRECT: |NETPOL MARKER: |ALL PASS$)'
 SHARED='^(NETPOL-OK\||NETPOL-TERM\||NETPOL-REJECT\||NETPOL-FLIP\||NETPOL CASES: )'
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/urdr-netpol.XXXXXX")
-trap 'rm -rf "$work" "$CACHE"' EXIT HUP INT TERM
+trap 'rm -rf "$work" "$CACHE_PREFIX"*.bin' EXIT HUP INT TERM
 
 PYTHONDONTWRITEBYTECODE=1 python3 shen/tests/netpol/oracle.py check
 PYTHONDONTWRITEBYTECODE=1 python3 shen/tests/netpol/oracle.py emit >"$work/oracle"
@@ -59,7 +61,7 @@ run_port() {
     printf '%s: SKIP launcher not built at %s\n' "$name" "$1"
     return 0
   fi
-  rm -f "$CACHE"
+  rm -f "$CACHE_PREFIX"*.bin
   if "$@" >"$work/out" 2>"$work/err" &&
      /usr/bin/grep -E "$SEMANTIC" "$work/out" >"$work/semantic" &&
      /usr/bin/cmp -s "$GOLDEN" "$work/semantic"; then

@@ -23,7 +23,9 @@ GO=${SHEN_GO:-$DEPS/shen-go/.bin/shen-go}
 RUST=${SHEN_RUST:-$DEPS/shen-rust/target/release/shen-rust}
 LUA=${SHEN_LUA:-$DEPS/shen-lua/bin/shen}
 PROGRAM=shen/tests/scenario/run-tests.shen
-CACHE=$ROOT/.shen-kernel-cache.bin
+# shen-lua writes .shen-kernel-cache.<hash>.bin (older builds wrote
+# .shen-kernel-cache.bin), so clear every variant.
+CACHE_PREFIX=$ROOT/.shen-kernel-cache
 AGREED=
 
 SHEN_KERNEL_CACHE=off
@@ -35,7 +37,7 @@ run_port() {
   shift
   output=$(mktemp "${TMPDIR:-/tmp}/urdr-scenario-output.XXXXXX")
   semantic=$(mktemp "${TMPDIR:-/tmp}/urdr-scenario-semantic.XXXXXX")
-  trap 'rm -f "$output" "$semantic" "$CACHE"' EXIT HUP INT TERM
+  trap 'rm -f "$output" "$semantic" "$CACHE_PREFIX"*.bin' EXIT HUP INT TERM
 
   if ! "$@" >"$output" 2>&1; then
     printf '%s: FAIL launcher\n' "$name" >&2
@@ -61,11 +63,11 @@ run_port() {
   fi
   printf '%s: PASS cases=%s sha256=%s\n' "$name" "$cases" "$digest"
 
-  rm -f "$output" "$semantic" "$CACHE"
+  rm -f "$output" "$semantic" "$CACHE_PREFIX"*.bin
   trap - EXIT HUP INT TERM
 }
 
-rm -f "$CACHE"
+rm -f "$CACHE_PREFIX"*.bin
 run_port shen-cl "$CL" script "$PROGRAM"
 run_port shen-go "$GO" script "$PROGRAM"
 run_port shen-rust "$RUST" script "$PROGRAM"

@@ -304,9 +304,12 @@ Notes learned the hard way:
   Shen. Build shen-go first and point `SHEN=` at it. `make fetch` downloads
   the kernel and is **not** needed here — the pinned checkout already ships
   `kernel/`, and the sandbox has no general network access.
-- **shen-lua and shen-cl write `.shen-kernel-cache.bin`** into the working
-  directory. `scripts/check-clean-tree` fails if it is left behind, so remove
-  it after every run (`run-probes.sh` traps on exit and does this).
+- **shen-lua and shen-cl write a kernel cache** into the working directory.
+  shen-lua names it per Lua build (`.shen-kernel-cache.<hash>.bin`); older
+  builds wrote a flat `.shen-kernel-cache.bin`. `scripts/check-clean-tree`
+  fails if one is left behind, so remove them after every run with the glob
+  `.shen-kernel-cache*.bin` (`run-probes.sh` traps on exit and does this).
+  Deleting only the flat name silently measures a *warm* boot.
 - **The dependency cache lives in the main checkout.** A git worktree has no
   `.cache/` of its own; resolve it from `git rev-parse --git-common-dir`.
   `run-probes.sh` does this.

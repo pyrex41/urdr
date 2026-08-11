@@ -40,8 +40,9 @@ artifacts/
 *.pid
 # shen-lua and shen-cl drop this in the working directory on load; untracked
 # and unignored, it makes scripts/check-clean-tree fail the moment any suite
-# regenerates it.
-.shen-kernel-cache.bin
+# regenerates it. shen-lua names it per Lua build
+# (.shen-kernel-cache.<hash>.bin); older builds wrote .shen-kernel-cache.bin.
+.shen-kernel-cache*.bin
 spikes/m1-prolog-portability/out/
 
 # Claude Code session worktrees

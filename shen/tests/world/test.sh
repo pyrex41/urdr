@@ -26,14 +26,16 @@ GO=${SHEN_GO:-$DEPS/shen-go/.bin/shen-go}
 RUST=${SHEN_RUST:-$DEPS/shen-rust/target/release/shen-rust}
 LUA=${SHEN_LUA:-$DEPS/shen-lua/bin/shen}
 GOLDEN=shen/tests/world/golden.txt
-CACHE=$ROOT/.shen-kernel-cache.bin
+# shen-lua writes .shen-kernel-cache.<hash>.bin (older builds wrote
+# .shen-kernel-cache.bin), so clear every variant.
+CACHE_PREFIX=$ROOT/.shen-kernel-cache
 
 run_port() {
   name=$1
   shift
   output=$(mktemp "${TMPDIR:-/tmp}/urdr-world-output.XXXXXX")
   semantic=$(mktemp "${TMPDIR:-/tmp}/urdr-world-semantic.XXXXXX")
-  trap 'rm -f "$output" "$semantic" "$CACHE"' EXIT HUP INT TERM
+  trap 'rm -f "$output" "$semantic" "$CACHE_PREFIX"*.bin' EXIT HUP INT TERM
 
   if "$@" >"$output" &&
      /usr/bin/grep -E \
@@ -47,11 +49,11 @@ run_port() {
     exit 1
   fi
 
-  rm -f "$output" "$semantic" "$CACHE"
+  rm -f "$output" "$semantic" "$CACHE_PREFIX"*.bin
   trap - EXIT HUP INT TERM
 }
 
-rm -f "$CACHE"
+rm -f "$CACHE_PREFIX"*.bin
 run_port shen-cl "$CL" script shen/tests/world/run-tests.shen
 run_port shen-go "$GO" script shen/tests/world/run-tests.shen
 run_port shen-rust "$RUST" script shen/tests/world/run-tests.shen
